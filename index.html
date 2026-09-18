@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Task Board</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <h1>Task Board</h1>
+
+  <div class="board">
+    <div class="column" data-status="todo">
+      <h2>To Do</h2>
+      <div class="card-list" id="todo-list"></div>
+      <form class="add-form" data-status="todo">
+        <input type="text" placeholder="新しいタスク" required>
+        <button type="submit">追加</button>
+      </form>
+    </div>
+
+    <div class="column" data-status="doing">
+      <h2>進行中</h2>
+      <div class="card-list" id="doing-list"></div>
+      <form class="add-form" data-status="doing">
+        <input type="text" placeholder="新しいタスク" required>
+        <button type="submit">追加</button>
+      </form>
+    </div>
+
+    <div class="column" data-status="done">
+      <h2>完了</h2>
+      <div class="card-list" id="done-list"></div>
+      <form class="add-form" data-status="done">
+        <input type="text" placeholder="新しいタスク" required>
+        <button type="submit">追加</button>
+      </form>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
