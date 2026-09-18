@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="860" height="520" viewBox="0 0 860 520" font-family="'Hiragino Kaku Gothic ProN','Yu Gothic',sans-serif">
+  <rect width="860" height="520" fill="#f4f5f7"/>
+
+  <!-- Title -->
+  <text x="430" y="34" font-size="20" font-weight="bold" text-anchor="middle" fill="#172b4d">Task Board</text>
+
+  <!-- Column 1: To Do -->
+  <g>
+    <rect x="30" y="60" width="250" height="430" rx="6" fill="#ebecf0" stroke="#dcdfe4"/>
+    <text x="50" y="90" font-size="15" font-weight="bold" fill="#172b4d">やるべきこと</text>
+
+    <rect x="46" y="106" width="218" height="40" rx="4" fill="#ffffff" stroke="#dcdfe4"/>
+    <text x="60" y="130" font-size="13" fill="#172b4d">要件定義書を書く</text>
+    <text x="248" y="130" font-size="13" fill="#999">×</text>
+
+    <rect x="46" y="156" width="218" height="40" rx="4" fill="#ffffff" stroke="#dcdfe4"/>
+    <text x="60" y="180" font-size="13" fill="#172b4d">画面イメージを作る</text>
+    <text x="248" y="180" font-size="13" fill="#999">×</text>
+
+    <!-- add form -->
+    <rect x="46" y="440" width="160" height="32" rx="4" fill="#ffffff" stroke="#ccc"/>
+    <text x="56" y="461" font-size="12" fill="#999">新しいタスク</text>
+    <rect x="212" y="440" width="52" height="32" rx="4" fill="#0079bf"/>
+    <text x="238" y="461" font-size="12" fill="#ffffff" text-anchor="middle">追加</text>
+  </g>
+
+  <!-- Column 2: 進行中 -->
+  <g>
+    <rect x="305" y="60" width="250" height="430" rx="6" fill="#ebecf0" stroke="#dcdfe4"/>
+    <text x="325" y="90" font-size="15" font-weight="bold" fill="#172b4d">進行中（作業中）</text>
+
+    <rect x="321" y="106" width="218" height="40" rx="4" fill="#ffffff" stroke="#dcdfe4"/>
+    <text x="335" y="130" font-size="13" fill="#172b4d">画面図を検討中</text>
+    <text x="523" y="130" font-size="13" fill="#999">×</text>
+
+    <!-- drag arrow illustration -->
+    <path d="M 264 126 C 285 126, 300 126, 318 126" stroke="#0079bf" stroke-width="2" fill="none" marker-end="url(#arrow)"/>
+    <text x="270" y="112" font-size="10" fill="#0079bf">ドラッグ&amp;ドロップで移動</text>
+
+    <rect x="321" y="440" width="160" height="32" rx="4" fill="#ffffff" stroke="#ccc"/>
+    <text x="331" y="461" font-size="12" fill="#999">新しいタスク</text>
+    <rect x="487" y="440" width="52" height="32" rx="4" fill="#0079bf"/>
+    <text x="513" y="461" font-size="12" fill="#ffffff" text-anchor="middle">追加</text>
+  </g>
+
+  <!-- Column 3: 完了 -->
+  <g>
+    <rect x="580" y="60" width="250" height="430" rx="6" fill="#ebecf0" stroke="#dcdfe4"/>
+    <text x="600" y="90" font-size="15" font-weight="bold" fill="#172b4d">終わったこと</text>
+
+    <rect x="596" y="106" width="218" height="40" rx="4" fill="#ffffff" stroke="#dcdfe4"/>
+    <text x="610" y="130" font-size="13" fill="#172b4d">アプリの雛形作成</text>
+    <text x="798" y="130" font-size="13" fill="#999">×</text>
+
+    <rect x="596" y="440" width="160" height="32" rx="4" fill="#ffffff" stroke="#ccc"/>
+    <text x="606" y="461" font-size="12" fill="#999">新しいタスク</text>
+    <rect x="762" y="440" width="52" height="32" rx="4" fill="#0079bf"/>
+    <text x="788" y="461" font-size="12" fill="#ffffff" text-anchor="middle">追加</text>
+  </g>
+
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L6,3 L0,6 Z" fill="#0079bf"/>
+    </marker>
+  </defs>
+</svg>
