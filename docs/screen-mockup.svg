@@ -9,13 +9,21 @@
     <rect x="30" y="60" width="250" height="430" rx="6" fill="#ebecf0" stroke="#dcdfe4"/>
     <text x="50" y="90" font-size="15" font-weight="bold" fill="#172b4d">やるべきこと</text>
 
-    <rect x="46" y="106" width="218" height="40" rx="4" fill="#ffffff" stroke="#dcdfe4"/>
-    <text x="60" y="130" font-size="13" fill="#172b4d">要件定義書を書く</text>
-    <text x="248" y="130" font-size="13" fill="#999">×</text>
+    <rect x="46" y="106" width="218" height="48" rx="4" fill="#ffffff" stroke="#dcdfe4"/>
+    <text x="60" y="128" font-size="13" fill="#172b4d">要件定義書を書く</text>
+    <text x="226" y="128" font-size="12" fill="#999">&#9998;</text>
+    <text x="248" y="128" font-size="13" fill="#999">&#215;</text>
+    <circle cx="56" cy="144" r="4" fill="#eb5a46"/>
+    <text x="64" y="147" font-size="9" fill="#5e6c84">高</text>
+    <text x="260" y="147" font-size="9" fill="#5e6c84" text-anchor="end">期限 09/25</text>
 
-    <rect x="46" y="156" width="218" height="40" rx="4" fill="#ffffff" stroke="#dcdfe4"/>
-    <text x="60" y="180" font-size="13" fill="#172b4d">画面イメージを作る</text>
-    <text x="248" y="180" font-size="13" fill="#999">×</text>
+    <rect x="46" y="164" width="218" height="48" rx="4" fill="#ffffff" stroke="#dcdfe4"/>
+    <text x="60" y="186" font-size="13" fill="#172b4d">画面イメージを作る</text>
+    <text x="226" y="186" font-size="12" fill="#999">&#9998;</text>
+    <text x="248" y="186" font-size="13" fill="#999">&#215;</text>
+    <circle cx="56" cy="202" r="4" fill="#ff9f1a"/>
+    <text x="64" y="205" font-size="9" fill="#5e6c84">中</text>
+    <text x="260" y="205" font-size="9" fill="#5e6c84" text-anchor="end">期限 09/30</text>
 
     <!-- add form -->
     <rect x="46" y="440" width="160" height="32" rx="4" fill="#ffffff" stroke="#ccc"/>
@@ -29,9 +37,13 @@
     <rect x="305" y="60" width="250" height="430" rx="6" fill="#ebecf0" stroke="#dcdfe4"/>
     <text x="325" y="90" font-size="15" font-weight="bold" fill="#172b4d">進行中（作業中）</text>
 
-    <rect x="321" y="106" width="218" height="40" rx="4" fill="#ffffff" stroke="#dcdfe4"/>
-    <text x="335" y="130" font-size="13" fill="#172b4d">画面図を検討中</text>
-    <text x="523" y="130" font-size="13" fill="#999">×</text>
+    <rect x="321" y="106" width="218" height="48" rx="4" fill="#ffffff" stroke="#dcdfe4"/>
+    <text x="335" y="128" font-size="13" fill="#172b4d">画面図を検討中</text>
+    <text x="501" y="128" font-size="12" fill="#999">&#9998;</text>
+    <text x="523" y="128" font-size="13" fill="#999">&#215;</text>
+    <circle cx="331" cy="144" r="4" fill="#ff9f1a"/>
+    <text x="339" y="147" font-size="9" fill="#5e6c84">中</text>
+    <text x="535" y="147" font-size="9" fill="#5e6c84" text-anchor="end">期限 09/28</text>
 
     <!-- drag arrow illustration -->
     <path d="M 264 126 C 285 126, 300 126, 318 126" stroke="#0079bf" stroke-width="2" fill="none" marker-end="url(#arrow)"/>
@@ -48,9 +60,13 @@
     <rect x="580" y="60" width="250" height="430" rx="6" fill="#ebecf0" stroke="#dcdfe4"/>
     <text x="600" y="90" font-size="15" font-weight="bold" fill="#172b4d">終わったこと</text>
 
-    <rect x="596" y="106" width="218" height="40" rx="4" fill="#ffffff" stroke="#dcdfe4"/>
-    <text x="610" y="130" font-size="13" fill="#172b4d">アプリの雛形作成</text>
-    <text x="798" y="130" font-size="13" fill="#999">×</text>
+    <rect x="596" y="106" width="218" height="48" rx="4" fill="#ffffff" stroke="#dcdfe4"/>
+    <text x="610" y="128" font-size="13" fill="#172b4d">アプリの雛形作成</text>
+    <text x="776" y="128" font-size="12" fill="#999">&#9998;</text>
+    <text x="798" y="128" font-size="13" fill="#999">&#215;</text>
+    <circle cx="606" cy="144" r="4" fill="#61bd4f"/>
+    <text x="614" y="147" font-size="9" fill="#5e6c84">低</text>
+    <text x="810" y="147" font-size="9" fill="#5e6c84" text-anchor="end">期限 09/20</text>
 
     <rect x="596" y="440" width="160" height="32" rx="4" fill="#ffffff" stroke="#ccc"/>
     <text x="606" y="461" font-size="12" fill="#999">新しいタスク</text>
