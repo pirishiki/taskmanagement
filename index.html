@@ -14,7 +14,13 @@
       <h2>やるべきこと</h2>
       <div class="card-list" id="todo-list"></div>
       <form class="add-form" data-status="todo">
-        <input type="text" placeholder="新しいタスク" required>
+        <input type="text" class="add-text" placeholder="新しいタスク" required>
+        <select class="add-priority">
+          <option value="high">高</option>
+          <option value="medium" selected>中</option>
+          <option value="low">低</option>
+        </select>
+        <input type="date" class="add-due-date">
         <button type="submit">追加</button>
       </form>
     </div>
@@ -23,7 +29,13 @@
       <h2>進行中</h2>
       <div class="card-list" id="doing-list"></div>
       <form class="add-form" data-status="doing">
-        <input type="text" placeholder="新しいタスク" required>
+        <input type="text" class="add-text" placeholder="新しいタスク" required>
+        <select class="add-priority">
+          <option value="high">高</option>
+          <option value="medium" selected>中</option>
+          <option value="low">低</option>
+        </select>
+        <input type="date" class="add-due-date">
         <button type="submit">追加</button>
       </form>
     </div>
@@ -32,7 +44,13 @@
       <h2>終わったこと</h2>
       <div class="card-list" id="done-list"></div>
       <form class="add-form" data-status="done">
-        <input type="text" placeholder="新しいタスク" required>
+        <input type="text" class="add-text" placeholder="新しいタスク" required>
+        <select class="add-priority">
+          <option value="high">高</option>
+          <option value="medium" selected>中</option>
+          <option value="low">低</option>
+        </select>
+        <input type="date" class="add-due-date">
         <button type="submit">追加</button>
       </form>
     </div>

@@ -1,18 +1,31 @@
 body {
   font-family: sans-serif;
-  background: #f4f5f7;
   margin: 0;
   padding: 20px;
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 85% 12%, #fff6d6 0%, #ffe9a8 6%, transparent 8%),
+    radial-gradient(ellipse 60% 30% at 18% 100%, #6fae65 0%, transparent 70%),
+    radial-gradient(ellipse 70% 35% at 78% 100%, #588a52 0%, transparent 70%),
+    radial-gradient(ellipse 90% 25% at 50% 100%, #7fbf72 0%, transparent 70%),
+    linear-gradient(to bottom, #8ec9e8 0%, #cfeaf5 45%, #eaf6ef 70%, #eaf6ef 100%);
+  background-attachment: fixed;
+  background-size: cover;
 }
 
 h1 {
   text-align: center;
+  color: #1c3d5a;
+  text-shadow: 0 1px 2px rgba(255, 255, 255, 0.6);
 }
 
 .board {
   display: flex;
   gap: 16px;
   justify-content: center;
+  background: rgba(255, 255, 255, 0.45);
+  border-radius: 10px;
+  padding: 16px;
 }
 
 .column {
@@ -48,36 +61,123 @@ h1 {
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
   cursor: grab;
   display: flex;
-  justify-content: space-between;
-  align-items: center;
+  flex-direction: column;
+  gap: 6px;
 }
 
 .card.dragging {
   opacity: 0.4;
 }
 
-.card button {
+.card-title-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 4px;
+}
+
+.card-text {
+  flex-grow: 1;
+  overflow-wrap: anywhere;
+}
+
+.edit-input {
+  flex-grow: 1;
+  font: inherit;
+  padding: 2px 4px;
+  border: 1px solid #0079bf;
+  border-radius: 3px;
+}
+
+.card-title-row button {
   background: none;
   border: none;
   color: #999;
   cursor: pointer;
   font-size: 14px;
+  flex-shrink: 0;
 }
 
-.card button:hover {
+.card-title-row button:hover {
+  color: #0079bf;
+}
+
+.card-title-row button:last-child:hover {
   color: #c00;
+}
+
+.card-meta-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.priority-badge {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.priority-badge::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.priority-badge[data-priority="high"]::before {
+  background: #eb5a46;
+}
+
+.priority-badge[data-priority="medium"]::before {
+  background: #ff9f1a;
+}
+
+.priority-badge[data-priority="low"]::before {
+  background: #61bd4f;
+}
+
+.priority-badge select {
+  border: none;
+  background: transparent;
+  color: #5e6c84;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.due-date-input {
+  border: 1px solid #dcdfe4;
+  border-radius: 3px;
+  font-size: 11px;
+  color: #5e6c84;
+  padding: 1px 2px;
+  max-width: 110px;
 }
 
 .add-form {
   display: flex;
+  flex-wrap: wrap;
   gap: 4px;
 }
 
-.add-form input {
+.add-form .add-text {
   flex-grow: 1;
+  min-width: 100%;
   padding: 6px;
   border: 1px solid #ccc;
   border-radius: 4px;
+}
+
+.add-form .add-priority,
+.add-form .add-due-date {
+  flex-grow: 1;
+  padding: 4px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 12px;
 }
 
 .add-form button {
