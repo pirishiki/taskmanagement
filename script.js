@@ -1,5 +1,6 @@
 const STORAGE_KEY = "tasks";
 const PRIORITY_LABELS = { high: "高", medium: "中", low: "低" };
+const PRIORITY_ORDER = { high: 0, medium: 1, low: 2 };
 
 // tasks: [{ id, text, status, priority, dueDate }]
 let tasks = loadTasks();
@@ -164,6 +165,22 @@ function setupAddForms() {
   });
 }
 
+function getDragAfterElement(list, y) {
+  const cards = [...list.querySelectorAll(".card:not(.dragging)")];
+
+  return cards.reduce(
+    (closest, card) => {
+      const box = card.getBoundingClientRect();
+      const offset = y - box.top - box.height / 2;
+      if (offset < 0 && offset > closest.offset) {
+        return { offset, element: card };
+      }
+      return closest;
+    },
+    { offset: Number.NEGATIVE_INFINITY, element: null }
+  ).element;
+}
+
 function setupDragAndDrop() {
   document.querySelectorAll(".card-list").forEach((list) => {
     list.addEventListener("dragover", (event) => {
@@ -185,16 +202,73 @@ function setupDragAndDrop() {
       const taskId = draggingCard.dataset.id;
       const newStatus = list.closest(".column").dataset.status;
 
-      const task = tasks.find((t) => t.id === taskId);
-      if (task) {
-        task.status = newStatus;
-        saveTasks();
-        render();
+      const draggedIndex = tasks.findIndex((t) => t.id === taskId);
+      if (draggedIndex === -1) return;
+
+      const [draggedTask] = tasks.splice(draggedIndex, 1);
+      draggedTask.status = newStatus;
+
+      const afterElement = getDragAfterElement(list, event.clientY);
+      if (afterElement) {
+        const insertBeforeIndex = tasks.findIndex((t) => t.id === afterElement.dataset.id);
+        tasks.splice(insertBeforeIndex, 0, draggedTask);
+      } else {
+        let lastIndexOfStatus = -1;
+        tasks.forEach((t, i) => {
+          if (t.status === newStatus) lastIndexOfStatus = i;
+        });
+        tasks.splice(lastIndexOfStatus + 1, 0, draggedTask);
       }
+
+      saveTasks();
+      render();
+    });
+  });
+}
+
+function sortColumn(status, criterion) {
+  const indices = [];
+  const subset = [];
+  tasks.forEach((task, index) => {
+    if (task.status === status) {
+      indices.push(index);
+      subset.push(task);
+    }
+  });
+
+  const comparator =
+    criterion === "priority"
+      ? (a, b) => PRIORITY_ORDER[a.priority || "medium"] - PRIORITY_ORDER[b.priority || "medium"]
+      : (a, b) => {
+          if (!a.dueDate && !b.dueDate) return 0;
+          if (!a.dueDate) return 1;
+          if (!b.dueDate) return -1;
+          return a.dueDate.localeCompare(b.dueDate);
+        };
+
+  subset.sort(comparator);
+  indices.forEach((taskIndex, i) => {
+    tasks[taskIndex] = subset[i];
+  });
+
+  saveTasks();
+  render();
+}
+
+function setupSortControls() {
+  document.querySelectorAll(".sort-select").forEach((select) => {
+    select.addEventListener("change", () => {
+      const criterion = select.value;
+      if (!criterion) return;
+
+      const status = select.closest(".column").dataset.status;
+      sortColumn(status, criterion);
+      select.value = "";
     });
   });
 }
 
 setupAddForms();
 setupDragAndDrop();
+setupSortControls();
 render();

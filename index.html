@@ -11,7 +11,14 @@
 
   <div class="board">
     <div class="column" data-status="todo">
-      <h2>やるべきこと</h2>
+      <div class="column-header">
+        <h2>やるべきこと</h2>
+        <select class="sort-select">
+          <option value="" selected>並び替え</option>
+          <option value="priority">優先度順</option>
+          <option value="dueDate">期限が近い順</option>
+        </select>
+      </div>
       <div class="card-list" id="todo-list"></div>
       <form class="add-form" data-status="todo">
         <input type="text" class="add-text" placeholder="新しいタスク" required>
@@ -26,7 +33,14 @@
     </div>
 
     <div class="column" data-status="doing">
-      <h2>進行中</h2>
+      <div class="column-header">
+        <h2>進行中</h2>
+        <select class="sort-select">
+          <option value="" selected>並び替え</option>
+          <option value="priority">優先度順</option>
+          <option value="dueDate">期限が近い順</option>
+        </select>
+      </div>
       <div class="card-list" id="doing-list"></div>
       <form class="add-form" data-status="doing">
         <input type="text" class="add-text" placeholder="新しいタスク" required>
@@ -41,7 +55,14 @@
     </div>
 
     <div class="column" data-status="done">
-      <h2>終わったこと</h2>
+      <div class="column-header">
+        <h2>終わったこと</h2>
+        <select class="sort-select">
+          <option value="" selected>並び替え</option>
+          <option value="priority">優先度順</option>
+          <option value="dueDate">期限が近い順</option>
+        </select>
+      </div>
       <div class="card-list" id="done-list"></div>
       <form class="add-form" data-status="done">
         <input type="text" class="add-text" placeholder="新しいタスク" required>
