@@ -1,5 +1,6 @@
 package com.taskmanagement.backend.task;
 
+import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -30,14 +31,14 @@ public class TaskController {
     }
 
     @PostMapping
-    public Task createTask(@RequestBody TaskRequest request) {
+    public Task createTask(@Valid @RequestBody TaskRequest request) {
         int nextOrder = taskRepository.findByStatusOrderBySortOrderAsc(request.status()).size();
         Task task = new Task(request.text(), request.status(), request.priority(), request.dueDate(), nextOrder);
         return taskRepository.save(task);
     }
 
     @PutMapping("/{id}")
-    public ResponseEntity<Task> updateTask(@PathVariable Long id, @RequestBody TaskRequest request) {
+    public ResponseEntity<Task> updateTask(@PathVariable Long id, @Valid @RequestBody TaskRequest request) {
         return taskRepository.findById(id)
                 .map(task -> {
                     task.setText(request.text());
