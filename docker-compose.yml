@@ -6,7 +6,8 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
     ports:
-      - "5432:5432"
+      # Windows に直接インストールした PostgreSQL が 5432 を使っているため、PC 側は 5433 にする
+      - "5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:

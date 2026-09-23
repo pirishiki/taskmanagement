@@ -9,4 +9,6 @@ public interface TaskRepository extends JpaRepository<Task, Long> {
     List<Task> findByStatusOrderBySortOrderAsc(String status);
 
     List<Task> findAllByOrderByStatusAscSortOrderAsc();
+
+    List<Task> findByTextContainingIgnoreCaseOrderByStatusAscSortOrderAsc(String keyword);
 }
