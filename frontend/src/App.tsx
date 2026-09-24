@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
-import { fetchTasks } from './api/taskApi'
+import { createTask, fetchTasks } from './api/taskApi'
 import Board from './components/Board'
 import SearchBar from './components/SearchBar'
-import type { Task } from './types/task'
+import type { NewTask, Task } from './types/task'
 
 function App() {
   const [tasks, setTasks] = useState<Task[]>([])
@@ -29,6 +29,19 @@ function App() {
     loadTasks(keyword)
   }
 
+  // 列のフォームで「追加」が押されたときに呼ばれる
+  function handleAdd(task: NewTask) {
+    createTask(task)
+      .then((created) => {
+        // 今のタスク一覧の最後に、登録されたタスクを足す
+        setTasks((prev) => [...prev, created])
+        setError(null)
+      })
+      .catch(() => {
+        setError('タスクを追加できませんでした。バックエンドが起動しているか確認してください。')
+      })
+  }
+
   // 最初の表示時に全件を取ってくる（loading は最初から true にしてある）
   useEffect(() => {
     loadTasks()
@@ -40,7 +53,7 @@ function App() {
       <SearchBar onSearch={handleSearch} />
       {loading && <p className="mb-4 text-gray-600">読み込み中…</p>}
       {error && <p className="mb-4 text-red-600">{error}</p>}
-      <Board tasks={tasks} />
+      <Board tasks={tasks} onAdd={handleAdd} />
     </div>
   )
 }
