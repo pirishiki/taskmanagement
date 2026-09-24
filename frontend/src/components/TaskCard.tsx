@@ -1,3 +1,4 @@
+import { useSortable } from '@dnd-kit/sortable'
 import { useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 import type { NewTask, Task, TaskPatch } from '../types/task'
 
@@ -35,6 +36,17 @@ function CardLabels({ priority, dueDate }: { priority: Task['priority']; dueDate
   )
 }
 
+// ドラッグ中にマウスに付いてくる、カードの分身（見た目だけで、ボタンは動かない）
+// ほんの少しだけ（反時計回りに0.5度）傾けて影を濃くし、持ち上げている感じを出す
+export function TaskCardOverlay({ task }: { task: Task }) {
+  return (
+    <div className="-rotate-[0.5deg] cursor-grabbing rounded bg-white p-3 shadow-lg">
+      <p className="text-sm whitespace-pre-wrap text-gray-800">{task.text}</p>
+      <CardLabels priority={task.priority} dueDate={task.dueDate} />
+    </div>
+  )
+}
+
 function TaskCard({ task, onUpdate, onPatch }: Props) {
   // 編集中のカードを出す位置。null のあいだは編集していない
   // 編集中のカードに目が向くように、画面を暗くして、その上の同じ位置に編集用のカードを重ねる
@@ -43,6 +55,15 @@ function TaskCard({ task, onUpdate, onPatch }: Props) {
   const [priority, setPriority] = useState<Task['priority']>(task.priority)
   const [dueDate, setDueDate] = useState(task.dueDate ?? '')
   const cardRef = useRef<HTMLDivElement>(null)
+
+  // ドラッグ＆ドロップ：このカードを「つかめる」ようにする。編集中はつかめない
+  // setNodeRef：どの要素がカードかを dnd-kit に教える
+  // attributes・listeners：マウスやキーボードでつかむための仕掛け。カードの要素に付ける
+  // transform・transition：ドラッグ中にカードをどれだけ動かして見せるか
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: task.id,
+    disabled: editPosition !== null,
+  })
 
   // ✎ を押したとき：欄に今のタスクの値を入れ、カードの位置を測ってから、編集を始める
   function startEditing() {
@@ -85,7 +106,21 @@ function TaskCard({ task, onUpdate, onPatch }: Props) {
 
   return (
     <>
-      <div ref={cardRef} className="group rounded bg-white p-3 shadow-sm">
+      <div
+        // 位置を測るための cardRef と、dnd-kit の setNodeRef の両方に、同じ要素を渡す
+        ref={(node) => {
+          cardRef.current = node
+          setNodeRef(node)
+        }}
+        style={{
+          transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
+          transition,
+        }}
+        {...attributes}
+        {...listeners}
+        // ドラッグ中、元のカードは「着地点」として薄く表示する（マウスに付いてくるのは TaskCardOverlay）
+        className={`group cursor-grab rounded bg-white p-3 shadow-sm ${isDragging ? 'opacity-40' : ''}`}
+      >
         <div className="flex items-start gap-2">
           {/* ○：押すと完了にする。変えるのは status だけなので PATCH を使う。「終わったこと」の列では出さない */}
           {task.status !== 'done' && (
