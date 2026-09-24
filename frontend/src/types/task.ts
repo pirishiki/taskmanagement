@@ -17,3 +17,8 @@ export type NewTask = {
   priority: Task['priority']
   dueDate: string | null
 }
+
+// タスクの一部だけを書き換えるとき（PATCH /api/tasks/{id}）に送る中身
+// Partial は「全部の項目を、書いても書かなくてもよいことにする」という意味
+// 丸ごと書き換えるとき（PUT）は、登録と同じ NewTask を送る
+export type TaskPatch = Partial<NewTask>
