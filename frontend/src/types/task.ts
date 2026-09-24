@@ -8,3 +8,12 @@ export type Task = {
   dueDate: string | null
   sortOrder: number
 }
+
+// タスクを登録するとき（POST /api/tasks）に送る中身
+// id と sortOrder はバックエンドが決めるので、ここには入れない
+export type NewTask = {
+  text: string
+  status: Task['status']
+  priority: Task['priority']
+  dueDate: string | null
+}

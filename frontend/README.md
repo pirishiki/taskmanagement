@@ -1,6 +1,6 @@
 # フロントエンド（React + TypeScript + Vite + Tailwind CSS）
 
-タスクをボード画面（やるべきこと / 進行中 / 終わったこと の3列）に表示し、タスク名のキーワードで検索する画面。
+タスクをボード画面（やるべきこと / 進行中 / 終わったこと の3列）に表示し、タスク名のキーワードで検索したり、各列の下のフォームからタスクを追加したりする画面。
 
 ## 必要なもの
 
@@ -26,12 +26,13 @@ DB とバックエンドを先に起動しておく（手順は [backend/構成�
 | ファイル | 役割 |
 | --- | --- |
 | `src/main.tsx` | 入口。`index.html` の `#root` に `App` を表示する |
-| `src/App.tsx` | 画面全体。タスク・読み込み中・エラーの状態を持ち、検索を実行する |
-| `src/types/task.ts` | API から返ってくるタスクの型（バックエンドの `Task.java` に対応） |
-| `src/api/taskApi.ts` | API を呼ぶ関数（`fetchTasks`） |
+| `src/App.tsx` | 画面全体。タスク・読み込み中・エラーの状態を持ち、検索と追加を実行する |
+| `src/types/task.ts` | API から返ってくるタスクの型（バックエンドの `Task.java` に対応）と、登録時に送る `NewTask` 型 |
+| `src/api/taskApi.ts` | API を呼ぶ関数（`fetchTasks`：一覧の取得、`createTask`：POST で登録） |
+| `src/components/AddTaskForm.tsx` | タスク追加フォーム（タスク名・優先度（既定は中）・期限日。タスク名が空欄なら何もしない） |
 | `src/components/SearchBar.tsx` | 検索ボックス（検索ボタンか Enter キーで検索） |
 | `src/components/Board.tsx` | タスクを status ごとに3列に分ける |
-| `src/components/Column.tsx` | 1列分（見出しとカードのリスト） |
+| `src/components/Column.tsx` | 1列分（見出し・カードのリスト・追加フォーム） |
 | `src/components/TaskCard.tsx` | カード1枚（タスク名・優先度・期限） |
 
 ## その他のコマンド
