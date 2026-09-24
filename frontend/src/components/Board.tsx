@@ -11,9 +11,10 @@ const columns: { status: Task['status']; title: string }[] = [
 type Props = {
   tasks: Task[]
   onAdd: (task: NewTask) => void
+  onUpdate: (id: number, task: NewTask) => void
 }
 
-function Board({ tasks, onAdd }: Props) {
+function Board({ tasks, onAdd, onUpdate }: Props) {
   return (
     <div className="flex items-start gap-4 overflow-x-auto">
       {columns.map((column) => (
@@ -23,6 +24,7 @@ function Board({ tasks, onAdd }: Props) {
           status={column.status}
           tasks={tasks.filter((task) => task.status === column.status)}
           onAdd={onAdd}
+          onUpdate={onUpdate}
         />
       ))}
     </div>

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { createTask, fetchTasks } from './api/taskApi'
+import { createTask, fetchTasks, updateTask } from './api/taskApi'
 import Board from './components/Board'
 import SearchBar from './components/SearchBar'
 import type { NewTask, Task } from './types/task'
@@ -42,6 +42,19 @@ function App() {
       })
   }
 
+  // カードの編集フォームで「保存」が押されたときに呼ばれる（PUT で丸ごと書き換える）
+  function handleUpdate(id: number, task: NewTask) {
+    updateTask(id, task)
+      .then((updated) => {
+        // 同じ id のタスクだけを、返ってきたタスクに入れ替える（ほかはそのまま）
+        setTasks((prev) => prev.map((t) => (t.id === updated.id ? updated : t)))
+        setError(null)
+      })
+      .catch(() => {
+        setError('タスクを更新できませんでした。バックエンドが起動しているか確認してください。')
+      })
+  }
+
   // 最初の表示時に全件を取ってくる（loading は最初から true にしてある）
   useEffect(() => {
     loadTasks()
@@ -53,7 +66,7 @@ function App() {
       <SearchBar onSearch={handleSearch} />
       {loading && <p className="mb-4 text-gray-600">読み込み中…</p>}
       {error && <p className="mb-4 text-red-600">{error}</p>}
-      <Board tasks={tasks} onAdd={handleAdd} />
+      <Board tasks={tasks} onAdd={handleAdd} onUpdate={handleUpdate} />
     </div>
   )
 }
