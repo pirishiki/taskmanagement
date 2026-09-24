@@ -30,6 +30,7 @@ type Props = {
   onUpdate: (id: number, task: NewTask) => void
   onPatch: (id: number, patch: TaskPatch) => void
   onMove: (taskId: number, toStatus: Task['status'], toIndex: number) => void
+  canDrag: boolean
 }
 
 // その列のタスクだけを取り出し、並び順（sortOrder）の小さい順に並べる
@@ -38,7 +39,7 @@ function tasksIn(tasks: Task[], status: Task['status']) {
   return tasks.filter((task) => task.status === status).sort((a, b) => a.sortOrder - b.sortOrder)
 }
 
-function Board({ tasks, onAdd, onUpdate, onPatch, onMove }: Props) {
+function Board({ tasks, onAdd, onUpdate, onPatch, onMove, canDrag }: Props) {
   // ドラッグ中だけ使う「仮のタスク一覧」。別の列の上に来たら、ここでカードを仮に移す
   // （移動先の列のカードが場所を空けて、どこに入るかが見えるようにするため）
   // null のときはドラッグしていないので、本物の tasks をそのまま表示する
@@ -125,6 +126,7 @@ function Board({ tasks, onAdd, onUpdate, onPatch, onMove }: Props) {
       onDragEnd={handleDragEnd}
       onDragCancel={handleDragCancel}
     >
+      {!canDrag && <p className="mb-3 text-sm text-red-600">検索中は、カードの並び替えはできません。</p>}
       <div className="flex items-start gap-4 overflow-x-auto">
         {columns.map((column) => (
           <Column
@@ -135,6 +137,7 @@ function Board({ tasks, onAdd, onUpdate, onPatch, onMove }: Props) {
             onAdd={onAdd}
             onUpdate={onUpdate}
             onPatch={onPatch}
+            canDrag={canDrag}
           />
         ))}
       </div>

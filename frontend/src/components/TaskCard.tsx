@@ -21,6 +21,7 @@ type Props = {
   task: Task
   onUpdate: (id: number, task: NewTask) => void
   onPatch: (id: number, patch: TaskPatch) => void
+  canDrag: boolean
 }
 
 // カードの下段（優先度と期限）。ふだんのカードと編集中のカードの両方で使う
@@ -47,7 +48,7 @@ export function TaskCardOverlay({ task }: { task: Task }) {
   )
 }
 
-function TaskCard({ task, onUpdate, onPatch }: Props) {
+function TaskCard({ task, onUpdate, onPatch, canDrag }: Props) {
   // 編集中のカードを出す位置。null のあいだは編集していない
   // 編集中のカードに目が向くように、画面を暗くして、その上の同じ位置に編集用のカードを重ねる
   const [editPosition, setEditPosition] = useState<DOMRect | null>(null)
@@ -56,13 +57,13 @@ function TaskCard({ task, onUpdate, onPatch }: Props) {
   const [dueDate, setDueDate] = useState(task.dueDate ?? '')
   const cardRef = useRef<HTMLDivElement>(null)
 
-  // ドラッグ＆ドロップ：このカードを「つかめる」ようにする。編集中はつかめない
+  // ドラッグ＆ドロップ：このカードを「つかめる」ようにする。編集中と検索中（canDrag が false）はつかめない
   // setNodeRef：どの要素がカードかを dnd-kit に教える
   // attributes・listeners：マウスやキーボードでつかむための仕掛け。カードの要素に付ける
   // transform・transition：ドラッグ中にカードをどれだけ動かして見せるか
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: task.id,
-    disabled: editPosition !== null,
+    disabled: editPosition !== null || !canDrag,
   })
 
   // ✎ を押したとき：欄に今のタスクの値を入れ、カードの位置を測ってから、編集を始める
@@ -119,7 +120,7 @@ function TaskCard({ task, onUpdate, onPatch }: Props) {
         {...attributes}
         {...listeners}
         // ドラッグ中、元のカードは「着地点」として薄く表示する（マウスに付いてくるのは TaskCardOverlay）
-        className={`group cursor-grab rounded bg-white p-3 shadow-sm ${isDragging ? 'opacity-40' : ''}`}
+        className={`group rounded bg-white p-3 shadow-sm ${canDrag ? 'cursor-grab' : ''} ${isDragging ? 'opacity-40' : ''}`}
       >
         <div className="flex items-start gap-2">
           {/* ○：押すと完了にする。変えるのは status だけなので PATCH を使う。「終わったこと」の列では出さない */}

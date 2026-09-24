@@ -8,6 +8,8 @@ function App() {
   const [tasks, setTasks] = useState<Task[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  // 最後に検索したキーワード。空でなければ、一部のタスクだけを表示している（検索中）
+  const [searchKeyword, setSearchKeyword] = useState('')
 
   // タスクを取ってきて、届いたら画面のメモ（tasks）を書き換える
   function loadTasks(keyword?: string) {
@@ -26,6 +28,7 @@ function App() {
   // 検索ボタンか Enter キーで呼ばれる
   function handleSearch(keyword: string) {
     setLoading(true)
+    setSearchKeyword(keyword)
     loadTasks(keyword)
   }
 
@@ -117,10 +120,18 @@ function App() {
   return (
     <div className="min-h-screen bg-sky-100 p-6">
       <h1 className="mb-6 text-3xl font-bold text-[#1c3d5a]">Task Board</h1>
-      <SearchBar onSearch={handleSearch} />
+      <SearchBar onSearch={handleSearch} searching={searchKeyword !== ''} />
       {loading && <p className="mb-4 text-gray-600">読み込み中…</p>}
       {error && <p className="mb-4 text-red-600">{error}</p>}
-      <Board tasks={tasks} onAdd={handleAdd} onUpdate={handleUpdate} onPatch={handlePatch} onMove={handleMove} />
+      <Board
+        tasks={tasks}
+        onAdd={handleAdd}
+        onUpdate={handleUpdate}
+        onPatch={handlePatch}
+        onMove={handleMove}
+        // 検索中は、見えていないタスクと並び順がずれるのを防ぐため、ドラッグできないようにする
+        canDrag={searchKeyword === ''}
+      />
     </div>
   )
 }
