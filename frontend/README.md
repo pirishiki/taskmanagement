@@ -26,14 +26,14 @@ DB とバックエンドを先に起動しておく（手順は [backend/構成�
 | ファイル | 役割 |
 | --- | --- |
 | `src/main.tsx` | 入口。`index.html` の `#root` に `App` を表示する |
-| `src/App.tsx` | 画面全体。タスク・読み込み中・エラーの状態を持ち、検索と追加を実行する |
-| `src/types/task.ts` | API から返ってくるタスクの型（バックエンドの `Task.java` に対応）と、登録時に送る `NewTask` 型 |
-| `src/api/taskApi.ts` | API を呼ぶ関数（`fetchTasks`：一覧の取得、`createTask`：POST で登録） |
-| `src/components/AddTaskForm.tsx` | タスク追加フォーム（タスク名・優先度（既定は中）・期限日。タスク名が空欄なら何もしない） |
-| `src/components/SearchBar.tsx` | 検索ボックス（検索ボタンか Enter キーで検索） |
-| `src/components/Board.tsx` | タスクを status ごとに3列に分ける |
-| `src/components/Column.tsx` | 1列分（見出し・カードのリスト・追加フォーム） |
-| `src/components/TaskCard.tsx` | カード1枚（タスク名・優先度・期限） |
+| `src/App.tsx` | 画面全体。タスク・読み込み中・エラー・検索キーワードの状態を持ち、検索・追加・編集（PUT）・完了（PATCH）・並び替えを実行する。並び替えは先に画面を書き換えてから保存し、失敗したら DB の状態を取り直す |
+| `src/types/task.ts` | API から返ってくるタスクの型（バックエンドの `Task.java` に対応）、登録・編集（PUT）時に送る `NewTask` 型、一部だけ更新（PATCH）するときに送る `TaskPatch` 型 |
+| `src/api/taskApi.ts` | API を呼ぶ関数（`fetchTasks`：一覧の取得、`createTask`：POST で登録、`updateTask`：PUT で丸ごと更新、`patchTask`：PATCH で一部だけ更新、`reorderTasks`：列の並び順をまとめて更新） |
+| `src/components/AddTaskForm.tsx` | タスク追加フォーム。ふだんは「＋ カードを追加」だけを出し、押すと開く（タスク名・優先度（既定は中）・期限日。タスク名が空欄なら何もしない。追加後も開いたまま。✕ か Esc キーで閉じる） |
+| `src/components/SearchBar.tsx` | 検索ボックス（検索ボタンか Enter キーで検索。検索中は「✕ 検索を解除」を出す） |
+| `src/components/Board.tsx` | タスクを status ごとに3列に分け、列の中を sortOrder 順に並べる。ドラッグ＆ドロップ全体（dnd-kit の `DndContext`）を受け持ち、ドラッグ中は仮の一覧で着地点を見せる。検索中はドラッグできないことを表示する |
+| `src/components/Column.tsx` | 1列分（見出し・カードのリスト・追加フォーム）。列の中で並び替えられるようにし、空の列にもカードを落とせるようにする |
+| `src/components/TaskCard.tsx` | カード1枚（タスク名・優先度・期限）。○ で完了、✎ でクイック編集（画面を暗くし、横に優先度・期限のメニュー）。ドラッグでつかめる。ドラッグ中にマウスに付いてくる分身（`TaskCardOverlay`）もここにある |
 
 ## その他のコマンド
 
