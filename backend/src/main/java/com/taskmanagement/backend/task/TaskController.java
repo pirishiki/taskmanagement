@@ -5,6 +5,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -47,14 +48,15 @@ public class TaskController {
 
     @PutMapping("/{id}")
     public ResponseEntity<Task> updateTask(@PathVariable Long id, @Valid @RequestBody TaskRequest request) {
-        return taskRepository.findById(id)
-                .map(task -> {
-                    task.setText(request.text());
-                    task.setPriority(request.priority());
-                    task.setDueDate(request.dueDate());
-                    task.setStatus(request.status());
-                    return ResponseEntity.ok(taskRepository.save(task));
-                })
+        return taskService.updateTask(id, request)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
+    }
+
+    @PatchMapping("/{id}")
+    public ResponseEntity<Task> patchTask(@PathVariable Long id, @Valid @RequestBody TaskPatchRequest request) {
+        return taskService.patchTask(id, request)
+                .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
     }
 
@@ -69,21 +71,7 @@ public class TaskController {
 
     @PutMapping("/reorder")
     public ResponseEntity<Void> reorder(@RequestBody ReorderRequest request) {
-        List<Task> tasks = taskRepository.findAllById(request.orderedIds());
-
-        for (int position = 0; position < request.orderedIds().size(); position++) {
-            Long taskId = request.orderedIds().get(position);
-            int order = position;
-            tasks.stream()
-                    .filter(task -> task.getId().equals(taskId))
-                    .findFirst()
-                    .ifPresent(task -> {
-                        task.setStatus(request.status());
-                        task.setSortOrder(order);
-                    });
-        }
-
-        taskRepository.saveAll(tasks);
+        taskService.reorder(request);
         return ResponseEntity.noContent().build();
     }
 }

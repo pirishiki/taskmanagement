@@ -18,7 +18,7 @@ Javaとspringbootを使えると企業が採用しやすい。データにもあ
 | 言語 | TypeScript | 6.0.3 |
 | ビルドツール | Vite | 8.3.0 |
 | パッケージ管理 | npm | 11.17.0 |
-| ドラッグ＆ドロップ | dnd-kit | 未導入（ドラッグ機能の実装時に導入） |
+| ドラッグ＆ドロップ | dnd-kit（@dnd-kit/core・@dnd-kit/sortable） | 6.3.1・10.0.0 |
 | スタイリング | Tailwind CSS | 4.3.3 |
 | 静的解析 | oxlint | 1.81 |
 
