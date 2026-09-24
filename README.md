@@ -48,7 +48,7 @@ Javaとspringbootを使えると企業が採用しやすい。データにもあ
 
 | 区分 | 技術 | バージョン |
 | --- | --- | --- |
-| RDBMS | PostgreSQL（Dockerコンテナ、ポート5433） | 17.11 |
+| RDBMS | PostgreSQL（Dockerコンテナ、ポート5432） | 17.11 |
 
 ### 開発ツール
 
