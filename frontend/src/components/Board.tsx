@@ -1,4 +1,4 @@
-import type { NewTask, Task } from '../types/task'
+import type { NewTask, Task, TaskPatch } from '../types/task'
 import Column from './Column'
 
 // 列の並び順と見出し（試作版 index.html と同じ）
@@ -12,9 +12,10 @@ type Props = {
   tasks: Task[]
   onAdd: (task: NewTask) => void
   onUpdate: (id: number, task: NewTask) => void
+  onPatch: (id: number, patch: TaskPatch) => void
 }
 
-function Board({ tasks, onAdd, onUpdate }: Props) {
+function Board({ tasks, onAdd, onUpdate, onPatch }: Props) {
   return (
     <div className="flex items-start gap-4 overflow-x-auto">
       {columns.map((column) => (
@@ -22,9 +23,14 @@ function Board({ tasks, onAdd, onUpdate }: Props) {
           key={column.status}
           title={column.title}
           status={column.status}
-          tasks={tasks.filter((task) => task.status === column.status)}
+          // その列のタスクだけを取り出し、並び順（sortOrder）の小さい順に並べる
+          // （完了やドラッグで列を移ったタスクも、sortOrder どおりの位置に出るようにするため）
+          tasks={tasks
+            .filter((task) => task.status === column.status)
+            .sort((a, b) => a.sortOrder - b.sortOrder)}
           onAdd={onAdd}
           onUpdate={onUpdate}
+          onPatch={onPatch}
         />
       ))}
     </div>

@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
-import { createTask, fetchTasks, updateTask } from './api/taskApi'
+import { createTask, fetchTasks, patchTask, updateTask } from './api/taskApi'
 import Board from './components/Board'
 import SearchBar from './components/SearchBar'
-import type { NewTask, Task } from './types/task'
+import type { NewTask, Task, TaskPatch } from './types/task'
 
 function App() {
   const [tasks, setTasks] = useState<Task[]>([])
@@ -55,6 +55,19 @@ function App() {
       })
   }
 
+  // カードの ○（完了）が押されたときなどに呼ばれる（PATCH で一部だけ書き換える）
+  function handlePatch(id: number, patch: TaskPatch) {
+    patchTask(id, patch)
+      .then((updated) => {
+        // 返ってきたタスクには、移動先の列と並び順も入っている。同じ id のタスクだけを入れ替える
+        setTasks((prev) => prev.map((t) => (t.id === updated.id ? updated : t)))
+        setError(null)
+      })
+      .catch(() => {
+        setError('タスクを更新できませんでした。バックエンドが起動しているか確認してください。')
+      })
+  }
+
   // 最初の表示時に全件を取ってくる（loading は最初から true にしてある）
   useEffect(() => {
     loadTasks()
@@ -66,7 +79,7 @@ function App() {
       <SearchBar onSearch={handleSearch} />
       {loading && <p className="mb-4 text-gray-600">読み込み中…</p>}
       {error && <p className="mb-4 text-red-600">{error}</p>}
-      <Board tasks={tasks} onAdd={handleAdd} onUpdate={handleUpdate} />
+      <Board tasks={tasks} onAdd={handleAdd} onUpdate={handleUpdate} onPatch={handlePatch} />
     </div>
   )
 }

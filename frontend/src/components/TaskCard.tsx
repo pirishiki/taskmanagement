@@ -1,5 +1,5 @@
 import { useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
-import type { NewTask, Task } from '../types/task'
+import type { NewTask, Task, TaskPatch } from '../types/task'
 
 // 優先度ごとの表示名と色（試作版 style.css と同じ色）
 const priorityLabels: Record<Task['priority'], string> = {
@@ -19,6 +19,7 @@ const priorities: Task['priority'][] = ['high', 'medium', 'low']
 type Props = {
   task: Task
   onUpdate: (id: number, task: NewTask) => void
+  onPatch: (id: number, patch: TaskPatch) => void
 }
 
 // カードの下段（優先度と期限）。ふだんのカードと編集中のカードの両方で使う
@@ -34,7 +35,7 @@ function CardLabels({ priority, dueDate }: { priority: Task['priority']; dueDate
   )
 }
 
-function TaskCard({ task, onUpdate }: Props) {
+function TaskCard({ task, onUpdate, onPatch }: Props) {
   // 編集中のカードを出す位置。null のあいだは編集していない
   // 編集中のカードに目が向くように、画面を暗くして、その上の同じ位置に編集用のカードを重ねる
   const [editPosition, setEditPosition] = useState<DOMRect | null>(null)
@@ -85,8 +86,20 @@ function TaskCard({ task, onUpdate }: Props) {
   return (
     <>
       <div ref={cardRef} className="group rounded bg-white p-3 shadow-sm">
-        <div className="flex items-start justify-between gap-2">
-          <p className="text-sm whitespace-pre-wrap text-gray-800">{task.text}</p>
+        <div className="flex items-start gap-2">
+          {/* ○：押すと完了にする。変えるのは status だけなので PATCH を使う。「終わったこと」の列では出さない */}
+          {task.status !== 'done' && (
+            <button
+              type="button"
+              onClick={() => onPatch(task.id, { status: 'done' })}
+              aria-label="完了にする"
+              title="完了にする"
+              className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-gray-400 text-[10px] leading-none text-transparent hover:border-[#61bd4f] hover:bg-[#61bd4f] hover:text-white"
+            >
+              ✓
+            </button>
+          )}
+          <p className="flex-1 text-sm whitespace-pre-wrap text-gray-800">{task.text}</p>
           <button
             type="button"
             onClick={startEditing}

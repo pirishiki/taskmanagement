@@ -1,4 +1,4 @@
-import type { NewTask, Task } from '../types/task'
+import type { NewTask, Task, TaskPatch } from '../types/task'
 import AddTaskForm from './AddTaskForm'
 import TaskCard from './TaskCard'
 
@@ -8,15 +8,16 @@ type Props = {
   tasks: Task[]
   onAdd: (task: NewTask) => void
   onUpdate: (id: number, task: NewTask) => void
+  onPatch: (id: number, patch: TaskPatch) => void
 }
 
-function Column({ title, status, tasks, onAdd, onUpdate }: Props) {
+function Column({ title, status, tasks, onAdd, onUpdate, onPatch }: Props) {
   return (
     <section className="w-72 shrink-0 rounded-md bg-[#ebecf0] p-3">
       <h2 className="mb-3 font-bold text-gray-700">{title}</h2>
       <div className="flex flex-col gap-2">
         {tasks.map((task) => (
-          <TaskCard key={task.id} task={task} onUpdate={onUpdate} />
+          <TaskCard key={task.id} task={task} onUpdate={onUpdate} onPatch={onPatch} />
         ))}
       </div>
       {/* フォームから届いた中身に、この列の status を書き足して上に伝える */}
