@@ -21,6 +21,7 @@ type Props = {
   task: Task
   onUpdate: (id: number, task: NewTask) => void
   onPatch: (id: number, patch: TaskPatch) => void
+  onDelete: (id: number) => void
   canDrag: boolean
 }
 
@@ -48,7 +49,7 @@ export function TaskCardOverlay({ task }: { task: Task }) {
   )
 }
 
-function TaskCard({ task, onUpdate, onPatch, canDrag }: Props) {
+function TaskCard({ task, onUpdate, onPatch, onDelete, canDrag }: Props) {
   // 編集中のカードを出す位置。null のあいだは編集していない
   // 編集中のカードに目が向くように、画面を暗くして、その上の同じ位置に編集用のカードを重ねる
   const [editPosition, setEditPosition] = useState<DOMRect | null>(null)
@@ -76,6 +77,14 @@ function TaskCard({ task, onUpdate, onPatch, canDrag }: Props) {
 
   function cancelEditing() {
     setEditPosition(null)
+  }
+
+  // × を押したとき：押し間違いで消えないよう、ブラウザの確認ダイアログを出す
+  // confirm は、OK なら true、キャンセルなら false を返す。OK のときだけ削除を頼む
+  function handleDeleteClick() {
+    if (window.confirm(`「${task.text}」を削除しますか？`)) {
+      onDelete(task.id)
+    }
   }
 
   // 保存ボタンを押したとき、またはタスク名の欄で Enter キーを押したときに呼ばれる
@@ -143,6 +152,15 @@ function TaskCard({ task, onUpdate, onPatch, canDrag }: Props) {
             className="shrink-0 rounded px-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
           >
             ✎
+          </button>
+          <button
+            type="button"
+            onClick={handleDeleteClick}
+            aria-label="削除"
+            title="削除"
+            className="shrink-0 rounded px-1 text-gray-400 hover:bg-gray-100 hover:text-[#eb5a46]"
+          >
+            ×
           </button>
         </div>
         <CardLabels priority={task.priority} dueDate={task.dueDate} />
