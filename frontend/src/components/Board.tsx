@@ -29,6 +29,7 @@ type Props = {
   onAdd: (task: NewTask) => void
   onUpdate: (id: number, task: NewTask) => void
   onPatch: (id: number, patch: TaskPatch) => void
+  onDelete: (id: number) => void
   onMove: (taskId: number, toStatus: Task['status'], toIndex: number) => void
   onSort: (status: Task['status'], criterion: SortCriterion) => void
   canDrag: boolean
@@ -40,7 +41,7 @@ function tasksIn(tasks: Task[], status: Task['status']) {
   return tasks.filter((task) => task.status === status).sort((a, b) => a.sortOrder - b.sortOrder)
 }
 
-function Board({ tasks, onAdd, onUpdate, onPatch, onMove, onSort, canDrag }: Props) {
+function Board({ tasks, onAdd, onUpdate, onPatch, onDelete, onMove, onSort, canDrag }: Props) {
   // ドラッグ中だけ使う「仮のタスク一覧」。別の列の上に来たら、ここでカードを仮に移す
   // （移動先の列のカードが場所を空けて、どこに入るかが見えるようにするため）
   // null のときはドラッグしていないので、本物の tasks をそのまま表示する
@@ -138,6 +139,7 @@ function Board({ tasks, onAdd, onUpdate, onPatch, onMove, onSort, canDrag }: Pro
             onAdd={onAdd}
             onUpdate={onUpdate}
             onPatch={onPatch}
+            onDelete={onDelete}
             onSort={onSort}
             canDrag={canDrag}
           />

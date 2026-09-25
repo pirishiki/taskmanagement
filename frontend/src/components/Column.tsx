@@ -11,11 +11,12 @@ type Props = {
   onAdd: (task: NewTask) => void
   onUpdate: (id: number, task: NewTask) => void
   onPatch: (id: number, patch: TaskPatch) => void
+  onDelete: (id: number) => void
   onSort: (status: Task['status'], criterion: SortCriterion) => void
   canDrag: boolean
 }
 
-function Column({ title, status, tasks, onAdd, onUpdate, onPatch, onSort, canDrag }: Props) {
+function Column({ title, status, tasks, onAdd, onUpdate, onPatch, onDelete, onSort, canDrag }: Props) {
   // ドラッグ＆ドロップ：この列を「置き場所」にする。id には列の status（'todo' など）を使う
   // カードが1枚もない列でも、ここに落とせるようにするため
   const { setNodeRef } = useDroppable({ id: status })
@@ -45,7 +46,14 @@ function Column({ title, status, tasks, onAdd, onUpdate, onPatch, onSort, canDra
         {/* min-h：カードがない列でも、落とせる広さを残す */}
         <div ref={setNodeRef} className="flex min-h-8 flex-col gap-2">
           {tasks.map((task) => (
-            <TaskCard key={task.id} task={task} onUpdate={onUpdate} onPatch={onPatch} canDrag={canDrag} />
+            <TaskCard
+              key={task.id}
+              task={task}
+              onUpdate={onUpdate}
+              onPatch={onPatch}
+              onDelete={onDelete}
+              canDrag={canDrag}
+            />
           ))}
         </div>
       </SortableContext>

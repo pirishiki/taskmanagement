@@ -53,6 +53,16 @@ export async function patchTask(id: number, patch: TaskPatch): Promise<Task> {
   return response.json()
 }
 
+// タスクを削除する（DELETE）。返ってくる中身はない（204）
+export async function deleteTask(id: number): Promise<void> {
+  const response = await fetch(`/api/tasks/${id}`, {
+    method: 'DELETE',
+  })
+  if (!response.ok) {
+    throw new Error(`タスクの削除に失敗しました（status ${response.status}）`)
+  }
+}
+
 // 1つの列の並び順を、orderedIds の順番どおりにする。返ってくる中身はない（204）
 export async function reorderTasks(status: Task['status'], orderedIds: number[]): Promise<void> {
   const response = await fetch('/api/tasks/reorder', {

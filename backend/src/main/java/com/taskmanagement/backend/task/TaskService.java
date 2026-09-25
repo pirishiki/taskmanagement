@@ -94,8 +94,13 @@ public class TaskService {
         taskRepository.saveAll(tasks);
     }
 
-    // 同じ列にあるタスクの件数を並び順にすると、列の一番下に入る
+    // 同じ列で一番大きい並び順より1つ大きくすると、列の一番下に入る（列が空なら 0）
+    // 件数ではなく最大値を使うのは、削除で並び順に隙間ができても、ほかのタスクと同じ番号にならないようにするため
     private int nextOrderIn(String status) {
-        return taskRepository.findByStatusOrderBySortOrderAsc(status).size();
+        List<Task> tasks = taskRepository.findByStatusOrderBySortOrderAsc(status);
+        if (tasks.isEmpty()) {
+            return 0;
+        }
+        return tasks.get(tasks.size() - 1).getSortOrder() + 1;
     }
 }

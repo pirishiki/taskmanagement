@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { createTask, fetchTasks, patchTask, reorderTasks, updateTask } from './api/taskApi'
+import { createTask, deleteTask, fetchTasks, patchTask, reorderTasks, updateTask } from './api/taskApi'
 import Board from './components/Board'
 import SearchBar from './components/SearchBar'
 import type { NewTask, SortCriterion, Task, TaskPatch } from './types/task'
@@ -75,6 +75,19 @@ function App() {
       })
       .catch(() => {
         setError('タスクを更新できませんでした。バックエンドが起動しているか確認してください。')
+      })
+  }
+
+  // カードの × で削除が確かめられたときに呼ばれる（確認のダイアログはカードの側で出す）
+  function handleDelete(id: number) {
+    deleteTask(id)
+      .then(() => {
+        // 削除できたら、同じ id のタスクだけを一覧から外す（ほかはそのまま）
+        setTasks((prev) => prev.filter((t) => t.id !== id))
+        setError(null)
+      })
+      .catch(() => {
+        setError('タスクを削除できませんでした。バックエンドが起動しているか確認してください。')
       })
   }
 
@@ -167,6 +180,7 @@ function App() {
         onAdd={handleAdd}
         onUpdate={handleUpdate}
         onPatch={handlePatch}
+        onDelete={handleDelete}
         onMove={handleMove}
         onSort={handleSort}
         // 検索中は、見えていないタスクと並び順がずれるのを防ぐため、ドラッグできないようにする
