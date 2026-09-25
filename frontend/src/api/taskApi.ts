@@ -54,11 +54,12 @@ export async function patchTask(id: number, patch: TaskPatch): Promise<Task> {
 }
 
 // タスクを削除する（DELETE）。返ってくる中身はない（204）
+// 404（そのタスクはもうない）も成功として扱う。別のタブなどで先に消されていても、「消したい」という目的は果たせているため
 export async function deleteTask(id: number): Promise<void> {
   const response = await fetch(`/api/tasks/${id}`, {
     method: 'DELETE',
   })
-  if (!response.ok) {
+  if (!response.ok && response.status !== 404) {
     throw new Error(`タスクの削除に失敗しました（status ${response.status}）`)
   }
 }
