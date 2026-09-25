@@ -22,3 +22,6 @@ export type NewTask = {
 // Partial は「全部の項目を、書いても書かなくてもよいことにする」という意味
 // 丸ごと書き換えるとき（PUT）は、登録と同じ NewTask を送る
 export type TaskPatch = Partial<NewTask>
+
+// 列の並び替えセレクトで選べる基準（'priority'：優先度順、'dueDate'：期限が近い順）
+export type SortCriterion = 'priority' | 'dueDate'

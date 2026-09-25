@@ -2,7 +2,14 @@ import { useEffect, useState } from 'react'
 import { createTask, fetchTasks, patchTask, reorderTasks, updateTask } from './api/taskApi'
 import Board from './components/Board'
 import SearchBar from './components/SearchBar'
-import type { NewTask, Task, TaskPatch } from './types/task'
+import type { NewTask, SortCriterion, Task, TaskPatch } from './types/task'
+
+// 優先度順に並べるときの順位（数字が小さいほど上に来る）
+const priorityRank: Record<Task['priority'], number> = {
+  high: 0,
+  medium: 1,
+  low: 2,
+}
 
 function App() {
   const [tasks, setTasks] = useState<Task[]>([])
@@ -112,6 +119,38 @@ function App() {
       })
   }
 
+  // 列の並び替えセレクトで「優先度順」「期限が近い順」を選んだときに呼ばれる
+  // その列のカードを一度だけ並べ直す。そのあとは、またドラッグで自由に動かせる
+  function handleSort(status: Task['status'], criterion: SortCriterion) {
+    // 1. 列のタスクを、今の並び順（sortOrder の小さい順）に並べる
+    const column = tasks.filter((t) => t.status === status).sort((a, b) => a.sortOrder - b.sortOrder)
+
+    // 2. 選んだ基準で並べ直す。sort は、同じ順位どうしの順番を変えない（今の順番のまま残る）
+    const sorted = [...column].sort((a, b) => {
+      if (criterion === 'priority') {
+        return priorityRank[a.priority] - priorityRank[b.priority]
+      }
+      // 期限が近い順：期限のないカードは一番下。日付は「2026-09-26」の形なので、文字の順がそのまま日付の順になる
+      if (a.dueDate === null && b.dueDate === null) return 0
+      if (a.dueDate === null) return 1
+      if (b.dueDate === null) return -1
+      return a.dueDate.localeCompare(b.dueDate)
+    })
+
+    // 3. sortOrder を上から 0, 1, 2… と振り直し、画面を先に書き換える
+    const changed = new Map<number, Task>()
+    sorted.forEach((t, i) => changed.set(t.id, { ...t, sortOrder: i }))
+    setTasks((prev) => prev.map((t) => changed.get(t.id) ?? t))
+
+    // 4. サーバーに新しい並び順を送る（ドラッグと同じ API）。失敗したら、DB の状態を取り直して画面を元に戻す
+    reorderTasks(status, sorted.map((t) => t.id))
+      .then(() => setError(null))
+      .catch(() => {
+        setError('並び替えを保存できませんでした。バックエンドが起動しているか確認してください。')
+        loadTasks()
+      })
+  }
+
   // 最初の表示時に全件を取ってくる（loading は最初から true にしてある）
   useEffect(() => {
     loadTasks()
@@ -129,6 +168,7 @@ function App() {
         onUpdate={handleUpdate}
         onPatch={handlePatch}
         onMove={handleMove}
+        onSort={handleSort}
         // 検索中は、見えていないタスクと並び順がずれるのを防ぐため、ドラッグできないようにする
         canDrag={searchKeyword === ''}
       />
