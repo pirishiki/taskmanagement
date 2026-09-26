@@ -35,7 +35,7 @@ jobs:
       - run: npm run build
 
   backend:
-    name: backend（PMD・compile）
+    name: backend（PMD・Checkstyle・test）
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -49,6 +49,6 @@ jobs:
           java-version: 21
       # Gradle を用意し、ダウンロードした部品を次回のために取っておく
       - uses: gradle/actions/setup-gradle@v6
-      # PMD（バグになりやすい書き方のチェック）と、コンパイル
-      # テスト（./gradlew test）は起動中の DB が必要なので、ここでは動かさない
-      - run: ./gradlew pmdMain pmdTest compileJava
+      # check は、コンパイル・PMD（バグになりやすい書き方）・Checkstyle（書き方のそろい）・テストをまとめて動かす
+      # テストの DB は Testcontainers が Docker で用意する（GitHub のサーバーには Docker が最初から入っている）
+      - run: ./gradlew check

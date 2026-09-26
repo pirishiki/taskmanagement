@@ -31,6 +31,7 @@ Javaとspringbootを使えると企業が採用しやすい。データにもあ
 | ビルドツール | Gradle | 9.7.1（`gradlew`ラッパー経由） |
 | API形式 | REST API | - |
 | 静的解析 | PMD（Gradle の `pmd` プラグイン、規則は quickstart） | 7.24.0 |
+| 書き方のチェック | Checkstyle（Gradle の `checkstyle` プラグイン、規則は `config/checkstyle/checkstyle.xml`） | 14.1.0 |
 
 主要な部品（ライブラリ）。Spring Boot 4.1.1 が組み合わせを決めて自動で取り寄せているもの。
 
@@ -44,6 +45,10 @@ Javaとspringbootを使えると企業が採用しやすい。データにもあ
 | DB接続プール | HikariCP | 7.0.2 |
 | DBドライバ | PostgreSQL JDBC Driver | 42.7.13 |
 | 入力チェック | Hibernate Validator | 9.1.3 |
+| ログ | SLF4J（書く窓口）・Logback（実際に書き出す） | 2.0.18・1.5.38 |
+| テスト | JUnit Jupiter | 6.0.3 |
+| テスト（使い捨ての DB） | Testcontainers（`testcontainers-postgresql`・`testcontainers-junit-jupiter`） | 2.0.5 |
+| テスト（Testcontainers と Spring Boot をつなぐ） | `spring-boot-testcontainers` | 4.1.1 |
 
 ### データベース
 
@@ -57,7 +62,7 @@ Javaとspringbootを使えると企業が採用しやすい。データにもあ
 | --- | --- | --- |
 | バージョン管理 | Git | 2.55.0 |
 | リポジトリホスティング | GitHub | - |
-| 自動チェック（CI） | GitHub Actions（`.github/workflows/ci.yml`。PR と master へのプッシュで、フロントの lint・build と、バックエンドの PMD・コンパイルを動かす） | - |
+| 自動チェック（CI） | GitHub Actions（`.github/workflows/ci.yml`。PR と master へのプッシュで、フロントの lint・build と、バックエンドの `./gradlew check`（コンパイル・PMD・Checkstyle・テスト）を動かす） | - |
 
 ## 起動方法
 
@@ -102,6 +107,8 @@ Javaとspringbootを使えると企業が採用しやすい。データにもあ
 | 6 | 中 | `Task.java`、各 Request | status・priority を文字列＋正規表現で持っていた。Java のコードの中では `"tood"` のような書き間違いも作れてしまう | enum（`TaskStatus`・`TaskPriority`）にした。JSON と DB では今までどおり小文字（`@JsonValue`・`@JsonCreator` と AttributeConverter） | #21 |
 | 10 | 低 | バックエンド全体 | エラーの返事の形がばらばらで、どの項目がなぜだめかが書かれていなかった。Controller の 404 は中身が空だった。エラーを1か所で受け止める仕組みがなかった | グローバル例外ハンドラー（`GlobalExceptionHandler`）で、すべてのエラーを ProblemDetail の形にそろえた。入力チェック違反は `errors` に理由を入れる。Controller は 404 を自分で作らず `TaskNotFoundException` を投げる | #23 |
 | 16 | 低 | `App.tsx`、`taskApi.ts` | どの失敗でも「バックエンドが起動しているか確認」と出ていた（入力ミスの 400 でも） | 失敗を `ApiError`（status と ProblemDetail）で受け取り、つながらない・入力ミス（理由つき）・見つからない・サーバーのエラーでメッセージを分けた。見つからないときはカードを一覧から外す | #23 |
+| 11 | 中 | `BackendApplicationTests.java` | テストが起動中の Docker の DB に依存していた。テストも起動を確かめる1件だけだった | Testcontainers で、テストのたびに使い捨ての PostgreSQL を用意する（開発用の DB は使わない）。API のテスト（`TaskApiTest`）を10件足した（登録・並び替え・削除と、入力ミスの 400・見つからない 404）。GitHub Actions でも `./gradlew check` でテストを流す | #24 |
+| （19 の再発防止） | 低 | バックエンド全体 | 字下げなどの「書き方の決まり」を自動でチェックしていなかった（#19 は目で見て見つけた。PMD では見つけられない） | Checkstyle を入れた（タブ文字、1行120文字まで、import、名前の付け方、`{ }` の付け忘れなど）。今のコードに違反は0件 | #24 |
 
 ### 今後の候補（別の PR で直す）
 
@@ -110,8 +117,6 @@ Javaとspringbootを使えると企業が採用しやすい。データにもあ
 | # | 重さ | 場所 | どんな問題か | 標準のやり方 | 要件定義書 |
 |---|---|---|---|---|---|
 | 9 | 中 | `application.properties` | 起動のたびにテーブルを自動で直している（`ddl-auto=update`） | Flyway などでテーブルの変更を記録する | No.20 |
-| 11 | 中 | `BackendApplicationTests.java` | テストが起動中の Docker の DB に依存している | Testcontainers（使い捨ての DB） | No.17 |
 | 15 | 低 | `TaskCard.tsx` | 編集画面を開いた時点の位置に固定していて、スクロールでずれる | React の createPortal | No.22 |
-| （19 の再発防止） | 低 | バックエンド全体 | 字下げなどの「書き方の決まり」を自動でチェックしていない（#19 は目で見て見つけた。PMD では見つけられない） | Checkstyle | No.23（No.17 と同じ PR） |
 
 ※ 読み上げソフトへの対応（jsx-a11y の指摘）と、削除の確認に `window.confirm` を使うことは、このアプリの方針として決めているので、問題として扱っていない。
