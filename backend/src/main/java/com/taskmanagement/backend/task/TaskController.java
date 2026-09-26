@@ -27,34 +27,41 @@ public class TaskController {
         this.taskService = taskService;
     }
 
+    // 返事はすべて TaskResponse（返事専用の型）にして返す。エンティティ Task はそのまま返さない
+
     @GetMapping
-    public List<Task> getAllTasks(@RequestParam(required = false) String keyword) {
-        return taskService.findTasks(keyword);
+    public List<TaskResponse> getAllTasks(@RequestParam(required = false) String keyword) {
+        return taskService.findTasks(keyword).stream()
+                .map(TaskResponse::from)
+                .toList();
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<Task> getTask(@PathVariable Long id) {
+    public ResponseEntity<TaskResponse> getTask(@PathVariable Long id) {
         return taskService.findTask(id)
+                .map(TaskResponse::from)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
     }
 
     @PostMapping
-    public ResponseEntity<Task> createTask(@Valid @RequestBody TaskRequest request) {
+    public ResponseEntity<TaskResponse> createTask(@Valid @RequestBody TaskRequest request) {
         Task created = taskService.createTask(request);
-        return ResponseEntity.status(HttpStatus.CREATED).body(created);
+        return ResponseEntity.status(HttpStatus.CREATED).body(TaskResponse.from(created));
     }
 
     @PutMapping("/{id}")
-    public ResponseEntity<Task> updateTask(@PathVariable Long id, @Valid @RequestBody TaskRequest request) {
+    public ResponseEntity<TaskResponse> updateTask(@PathVariable Long id, @Valid @RequestBody TaskRequest request) {
         return taskService.updateTask(id, request)
+                .map(TaskResponse::from)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
     }
 
     @PatchMapping("/{id}")
-    public ResponseEntity<Task> patchTask(@PathVariable Long id, @Valid @RequestBody TaskPatchRequest request) {
+    public ResponseEntity<TaskResponse> patchTask(@PathVariable Long id, @Valid @RequestBody TaskPatchRequest request) {
         return taskService.patchTask(id, request)
+                .map(TaskResponse::from)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
     }
