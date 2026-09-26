@@ -103,7 +103,7 @@ Javaとspringbootを使えると企業が採用しやすい。データにもあ
 | 5 | 中 | `TaskController.java` | DB の形（エンティティ）をそのまま API の返事にしている | 返事専用の型（DTO） | No.18 |
 | 6 | 中 | `Task.java`、各 Request | status・priority を文字列＋正規表現で持っている | Java の enum | No.19 |
 | 9 | 中 | `application.properties` | 起動のたびにテーブルを自動で直している（`ddl-auto=update`） | Flyway などでテーブルの変更を記録する | No.20 |
-| 10 | 低 | バックエンド全体 | エラーの返事の形がばらばら | Spring 標準の ProblemDetail | No.21 |
+| 10 | 低 | バックエンド全体 | エラーの返事の形がばらばら。エラーを1か所で受け止める仕組み（グローバル例外ハンドラー）がない | `@RestControllerAdvice` のグローバル例外ハンドラーで、Spring 標準の ProblemDetail の形にそろえて返す | No.21（#16 と同じ PR） |
 | 11 | 中 | `BackendApplicationTests.java` | テストが起動中の Docker の DB に依存している | Testcontainers（使い捨ての DB） | No.17 |
 | 15 | 低 | `TaskCard.tsx` | 編集画面を開いた時点の位置に固定していて、スクロールでずれる | React の createPortal | No.22 |
 | 16 | 低 | `App.tsx` | エラーメッセージがいつも「バックエンドが起動しているか確認」 | サーバーの返事（400・404・500）ごとに変える | No.21 |
