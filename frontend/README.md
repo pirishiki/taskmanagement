@@ -26,9 +26,9 @@ DB とバックエンドを先に起動しておく（手順は [backend/構成�
 | ファイル | 役割 |
 | --- | --- |
 | `src/main.tsx` | 入口。`index.html` の `#root` に `App` を表示する |
-| `src/App.tsx` | 画面全体。タスク・読み込み中・エラー・検索キーワードの状態を持ち、検索・追加・編集（PUT）・完了（PATCH）・削除（DELETE）・並び替え（ドラッグ、および優先度順・期限が近い順の自動並び替え）を実行する。並び替えは先に画面を書き換えてから保存し、失敗したら DB の状態を取り直す。削除はサーバーで消せてから画面の一覧から外す。一覧の取得は、最後に頼んだものの結果だけを使う（検索を続けて押したとき、古い結果があとから届いて上書きしないように） |
+| `src/App.tsx` | 画面全体。タスク・読み込み中・エラー・検索キーワードの状態を持ち、検索・追加・編集（PUT）・完了（PATCH）・削除（DELETE）・並び替え（ドラッグ、および優先度順・期限が近い順の自動並び替え）を実行する。並び替えは先に画面を書き換えてから保存し、失敗したら DB の状態を取り直す。削除はサーバーで消せてから画面の一覧から外す。一覧の取得は、最後に頼んだものの結果だけを使う（検索を続けて押したとき、古い結果があとから届いて上書きしないように）。失敗したときは `errorMessage` で、失敗の種類ごとに違うメッセージを出す（つながらない／入力ミス（400。バックエンドが返した理由を添える）／見つからない（404。そのカードを一覧から外す）／サーバーのエラー（500）） |
 | `src/types/task.ts` | API から返ってくるタスクの型（バックエンドの `Task.java` に対応）、登録・編集（PUT）時に送る `NewTask` 型、一部だけ更新（PATCH）するときに送る `TaskPatch` 型、列の並び替えの基準（優先度順・期限が近い順）を表す `SortCriterion` 型 |
-| `src/api/taskApi.ts` | API を呼ぶ関数（`fetchTasks`：一覧の取得、`createTask`：POST で登録、`updateTask`：PUT で丸ごと更新、`patchTask`：PATCH で一部だけ更新、`deleteTask`：DELETE で削除、`reorderTasks`：列の並び順をまとめて更新） |
+| `src/api/taskApi.ts` | API を呼ぶ関数（`fetchTasks`：一覧の取得、`createTask`：POST で登録、`updateTask`：PUT で丸ごと更新、`patchTask`：PATCH で一部だけ更新、`deleteTask`：DELETE で削除、`reorderTasks`：列の並び順をまとめて更新）。どの関数も共通の `request` を通り、失敗したら `ApiError`（status と、バックエンドが返した ProblemDetail の中身）を投げる。通信できない、または ProblemDetail でない返事（Vite のプロキシの 502 など）は「つながらない」（status 0）として扱う |
 | `src/components/AddTaskForm.tsx` | タスク追加フォーム。ふだんは「＋ カードを追加」だけを出し、押すと開く（タスク名（255文字まで）・優先度（既定は中）・期限日。タスク名が空欄なら何もしない。追加後も開いたまま。✕ か Esc キーで閉じる） |
 | `src/components/SearchBar.tsx` | 検索ボックス（検索ボタンか Enter キーで検索。検索中は「✕ 検索を解除」を出す） |
 | `src/components/Board.tsx` | タスクを status ごとに3列に分け、列の中を sortOrder 順に並べる。ドラッグ＆ドロップ全体（dnd-kit の `DndContext`）を受け持ち、ドラッグ中は仮の一覧で着地点を見せる。検索中はドラッグできないことを表示する |

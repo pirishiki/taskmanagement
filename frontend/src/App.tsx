@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { createTask, deleteTask, fetchTasks, patchTask, reorderTasks, updateTask } from './api/taskApi'
+import { ApiError, createTask, deleteTask, fetchTasks, patchTask, reorderTasks, updateTask } from './api/taskApi'
 import Board from './components/Board'
 import SearchBar from './components/SearchBar'
 import type { NewTask, SortCriterion, Task, TaskPatch } from './types/task'
@@ -9,6 +9,29 @@ const priorityRank: Record<Task['priority'], number> = {
   high: 0,
   medium: 1,
   low: 2,
+}
+
+// 失敗の種類（ApiError の status）に合わせて、画面に出すメッセージを作る
+// action は「タスクを追加」のような、しようとしたこと
+function errorMessage(error: unknown, action: string): string {
+  if (!(error instanceof ApiError) || error.status === 0) {
+    return `${action}できませんでした。バックエンドにつながりません。起動しているか確認してください。`
+  }
+  if (error.status === 400) {
+    // 入力チェック違反なら errors の理由を、そうでなければ detail を、かっこの中に出す
+    const reasons = Object.values(error.problem?.errors ?? {})
+    const reason = reasons.length > 0 ? reasons.join('、') : error.problem?.detail
+    return `${action}できませんでした。入力内容を確かめてください（${reason}）。`
+  }
+  if (error.status === 404) {
+    return `${action}できませんでした。タスクが見つかりません（ほかの画面で削除された可能性があります）。`
+  }
+  return `${action}できませんでした。サーバーでエラーが起きました。時間をおいて試してください。`
+}
+
+// 「タスクが見つからない」（404）失敗かどうか
+function isNotFound(error: unknown): boolean {
+  return error instanceof ApiError && error.status === 404
 }
 
 function App() {
@@ -37,12 +60,12 @@ function App() {
         setTasks(result)
         setError(null)
       })
-      .catch(() => {
+      .catch((error) => {
         if (!isLatest()) {
           return
         }
         setTasks([])
-        setError('タスクを取得できませんでした。バックエンドが起動しているか確認してください。')
+        setError(errorMessage(error, 'タスクを取得'))
       })
       .finally(() => {
         if (isLatest()) {
@@ -66,8 +89,8 @@ function App() {
         setTasks((prev) => [...prev, created])
         setError(null)
       })
-      .catch(() => {
-        setError('タスクを追加できませんでした。バックエンドが起動しているか確認してください。')
+      .catch((error) => {
+        setError(errorMessage(error, 'タスクを追加'))
       })
   }
 
@@ -79,8 +102,12 @@ function App() {
         setTasks((prev) => prev.map((t) => (t.id === updated.id ? updated : t)))
         setError(null)
       })
-      .catch(() => {
-        setError('タスクを更新できませんでした。バックエンドが起動しているか確認してください。')
+      .catch((error) => {
+        setError(errorMessage(error, 'タスクを更新'))
+        // もうないタスクなら、画面の一覧からも外す（画面と DB を合わせる）
+        if (isNotFound(error)) {
+          setTasks((prev) => prev.filter((t) => t.id !== id))
+        }
       })
   }
 
@@ -92,8 +119,12 @@ function App() {
         setTasks((prev) => prev.map((t) => (t.id === updated.id ? updated : t)))
         setError(null)
       })
-      .catch(() => {
-        setError('タスクを更新できませんでした。バックエンドが起動しているか確認してください。')
+      .catch((error) => {
+        setError(errorMessage(error, 'タスクを更新'))
+        // もうないタスクなら、画面の一覧からも外す（画面と DB を合わせる）
+        if (isNotFound(error)) {
+          setTasks((prev) => prev.filter((t) => t.id !== id))
+        }
       })
   }
 
@@ -105,8 +136,8 @@ function App() {
         setTasks((prev) => prev.filter((t) => t.id !== id))
         setError(null)
       })
-      .catch(() => {
-        setError('タスクを削除できませんでした。バックエンドが起動しているか確認してください。')
+      .catch((error) => {
+        setError(errorMessage(error, 'タスクを削除'))
       })
   }
 
@@ -145,8 +176,8 @@ function App() {
     }
     Promise.all(requests)
       .then(() => setError(null))
-      .catch(() => {
-        setError('並び替えを保存できませんでした。バックエンドが起動しているか確認してください。')
+      .catch((error) => {
+        setError(errorMessage(error, '並び替えを保存'))
         loadTasks()
       })
   }
@@ -177,8 +208,8 @@ function App() {
     // 4. サーバーに新しい並び順を送る（ドラッグと同じ API）。失敗したら、DB の状態を取り直して画面を元に戻す
     reorderTasks(status, sorted.map((t) => t.id))
       .then(() => setError(null))
-      .catch(() => {
-        setError('並び替えを保存できませんでした。バックエンドが起動しているか確認してください。')
+      .catch((error) => {
+        setError(errorMessage(error, '並び替えを保存'))
         loadTasks()
       })
   }

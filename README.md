@@ -100,6 +100,8 @@ Javaとspringbootを使えると企業が採用しやすい。データにもあ
 |---|---|---|---|---|---|
 | 5 | 中 | `TaskController.java` | DB の形（エンティティ `Task`）をそのまま API の返事にしていた。DB の形を変えると、画面への返事の形も勝手に変わってしまう | 返事専用の型（DTO）`TaskResponse` を作り、Controller はそれに詰め替えて返す。返事の中身は変わらないことを、変更の前後で比べて確かめた | #21 |
 | 6 | 中 | `Task.java`、各 Request | status・priority を文字列＋正規表現で持っていた。Java のコードの中では `"tood"` のような書き間違いも作れてしまう | enum（`TaskStatus`・`TaskPriority`）にした。JSON と DB では今までどおり小文字（`@JsonValue`・`@JsonCreator` と AttributeConverter） | #21 |
+| 10 | 低 | バックエンド全体 | エラーの返事の形がばらばらで、どの項目がなぜだめかが書かれていなかった。Controller の 404 は中身が空だった。エラーを1か所で受け止める仕組みがなかった | グローバル例外ハンドラー（`GlobalExceptionHandler`）で、すべてのエラーを ProblemDetail の形にそろえた。入力チェック違反は `errors` に理由を入れる。Controller は 404 を自分で作らず `TaskNotFoundException` を投げる | #23 |
+| 16 | 低 | `App.tsx`、`taskApi.ts` | どの失敗でも「バックエンドが起動しているか確認」と出ていた（入力ミスの 400 でも） | 失敗を `ApiError`（status と ProblemDetail）で受け取り、つながらない・入力ミス（理由つき）・見つからない・サーバーのエラーでメッセージを分けた。見つからないときはカードを一覧から外す | #23 |
 
 ### 今後の候補（別の PR で直す）
 
@@ -108,10 +110,8 @@ Javaとspringbootを使えると企業が採用しやすい。データにもあ
 | # | 重さ | 場所 | どんな問題か | 標準のやり方 | 要件定義書 |
 |---|---|---|---|---|---|
 | 9 | 中 | `application.properties` | 起動のたびにテーブルを自動で直している（`ddl-auto=update`） | Flyway などでテーブルの変更を記録する | No.20 |
-| 10 | 低 | バックエンド全体 | エラーの返事の形がばらばら。エラーを1か所で受け止める仕組み（グローバル例外ハンドラー）がない | `@RestControllerAdvice` のグローバル例外ハンドラーで、Spring 標準の ProblemDetail の形にそろえて返す | No.21（#16 と同じ PR） |
 | 11 | 中 | `BackendApplicationTests.java` | テストが起動中の Docker の DB に依存している | Testcontainers（使い捨ての DB） | No.17 |
 | 15 | 低 | `TaskCard.tsx` | 編集画面を開いた時点の位置に固定していて、スクロールでずれる | React の createPortal | No.22 |
-| 16 | 低 | `App.tsx` | エラーメッセージがいつも「バックエンドが起動しているか確認」 | サーバーの返事（400・404・500）ごとに変える | No.21 |
 | （19 の再発防止） | 低 | バックエンド全体 | 字下げなどの「書き方の決まり」を自動でチェックしていない（#19 は目で見て見つけた。PMD では見つけられない） | Checkstyle | No.23（No.17 と同じ PR） |
 
 ※ 読み上げソフトへの対応（jsx-a11y の指摘）と、削除の確認に `window.confirm` を使うことは、このアプリの方針として決めているので、問題として扱っていない。

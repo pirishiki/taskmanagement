@@ -28,6 +28,7 @@ public class TaskController {
     }
 
     // 返事はすべて TaskResponse（返事専用の型）にして返す。エンティティ Task はそのまま返さない
+    // タスクが見つからないときは TaskNotFoundException を投げる。404 の返事は GlobalExceptionHandler が作る
 
     @GetMapping
     public List<TaskResponse> getAllTasks(@RequestParam(required = false) String keyword) {
@@ -37,11 +38,10 @@ public class TaskController {
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<TaskResponse> getTask(@PathVariable Long id) {
+    public TaskResponse getTask(@PathVariable Long id) {
         return taskService.findTask(id)
                 .map(TaskResponse::from)
-                .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
+                .orElseThrow(() -> new TaskNotFoundException(id));
     }
 
     @PostMapping
@@ -51,25 +51,23 @@ public class TaskController {
     }
 
     @PutMapping("/{id}")
-    public ResponseEntity<TaskResponse> updateTask(@PathVariable Long id, @Valid @RequestBody TaskRequest request) {
+    public TaskResponse updateTask(@PathVariable Long id, @Valid @RequestBody TaskRequest request) {
         return taskService.updateTask(id, request)
                 .map(TaskResponse::from)
-                .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
+                .orElseThrow(() -> new TaskNotFoundException(id));
     }
 
     @PatchMapping("/{id}")
-    public ResponseEntity<TaskResponse> patchTask(@PathVariable Long id, @Valid @RequestBody TaskPatchRequest request) {
+    public TaskResponse patchTask(@PathVariable Long id, @Valid @RequestBody TaskPatchRequest request) {
         return taskService.patchTask(id, request)
                 .map(TaskResponse::from)
-                .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
+                .orElseThrow(() -> new TaskNotFoundException(id));
     }
 
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteTask(@PathVariable Long id) {
         if (!taskService.deleteTask(id)) {
-            return ResponseEntity.notFound().build();
+            throw new TaskNotFoundException(id);
         }
         return ResponseEntity.noContent().build();
     }
