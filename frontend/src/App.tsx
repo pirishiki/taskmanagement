@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { createTask, deleteTask, fetchTasks, patchTask, reorderTasks, updateTask } from './api/taskApi'
 import Board from './components/Board'
 import SearchBar from './components/SearchBar'
@@ -18,19 +18,38 @@ function App() {
   // 最後に検索したキーワード。空でなければ、一部のタスクだけを表示している（検索中）
   const [searchKeyword, setSearchKeyword] = useState('')
 
+  // 最後に頼んだ取得の番号。返事が届いたとき、この番号と同じものだけを画面に使う
+  // （検索を続けて押したとき、先に頼んだ古い結果があとから届いて、新しい結果を上書きしないようにするため）
+  const latestRequest = useRef(0)
+
   // タスクを取ってきて、届いたら画面のメモ（tasks）を書き換える
-  function loadTasks(keyword?: string) {
+  // useCallback：画面を描き直しても、同じ関数のまま使い回す（useEffect の依存に書いても、毎回動き直さないようにするため）
+  const loadTasks = useCallback((keyword?: string) => {
+    latestRequest.current += 1
+    const requestId = latestRequest.current
+    const isLatest = () => requestId === latestRequest.current
+
     fetchTasks(keyword)
       .then((result) => {
+        if (!isLatest()) {
+          return // もっと新しい取得を頼んであるので、この古い結果は捨てる
+        }
         setTasks(result)
         setError(null)
       })
       .catch(() => {
+        if (!isLatest()) {
+          return
+        }
         setTasks([])
         setError('タスクを取得できませんでした。バックエンドが起動しているか確認してください。')
       })
-      .finally(() => setLoading(false))
-  }
+      .finally(() => {
+        if (isLatest()) {
+          setLoading(false)
+        }
+      })
+  }, [])
 
   // 検索ボタンか Enter キーで呼ばれる
   function handleSearch(keyword: string) {
@@ -167,7 +186,7 @@ function App() {
   // 最初の表示時に全件を取ってくる（loading は最初から true にしてある）
   useEffect(() => {
     loadTasks()
-  }, [])
+  }, [loadTasks])
 
   return (
     <div className="min-h-screen bg-sky-100 p-6">

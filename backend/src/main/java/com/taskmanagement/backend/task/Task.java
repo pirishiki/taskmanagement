@@ -33,6 +33,7 @@ public class Task {
     private Integer sortOrder;
 
     protected Task() {
+        // JPA（Hibernate）が DB から読んだ行を Task に詰めるときに使う。アプリのコードからは呼ばない
     }
 
     public Task(String text, String status, String priority, LocalDate dueDate, Integer sortOrder) {
