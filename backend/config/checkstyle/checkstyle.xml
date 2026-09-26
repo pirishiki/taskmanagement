@@ -1,0 +1,66 @@
+<?xml version="1.0"?>
+<!DOCTYPE module PUBLIC
+        "-//Checkstyle//DTD Checkstyle Configuration 1.3//EN"
+        "https://checkstyle.org/dtds/configuration_1_3.dtd">
+
+<!--
+  Checkstyle の決まり（コードの「書き方」のチェック）
+  PMD は「バグになりやすい書き方」を探す。Checkstyle は「見た目や名前の付け方がそろっているか」を見る
+  今のコードに合う、基本的な決まりだけを選んでいる。1件でも見つかると ./gradlew check が失敗する
+-->
+<module name="Checker">
+    <property name="charset" value="UTF-8"/>
+    <property name="severity" value="error"/>
+
+    <!-- ファイル全体の決まり -->
+    <!-- インデントにタブ文字を使わない（スペース4つにそろえる） -->
+    <module name="FileTabCharacter"/>
+    <!-- ファイルの最後は改行で終える -->
+    <module name="NewlineAtEndOfFile">
+        <property name="lineSeparator" value="lf_cr_crlf"/>
+    </module>
+    <!-- 1行は120文字まで（長すぎると、横に読み進めないと見えなくなる） -->
+    <module name="LineLength">
+        <property name="max" value="120"/>
+    </module>
+
+    <!-- クラスの中身の決まり -->
+    <module name="TreeWalker">
+        <!-- import：* でまとめて読み込まない、使っていないもの・重なっているものを残さない -->
+        <module name="AvoidStarImport"/>
+        <module name="UnusedImports"/>
+        <module name="RedundantImport"/>
+
+        <!-- 名前の付け方：クラスは TaskService、変数やメソッドは taskService、定数は MAX_LENGTH の形 -->
+        <module name="PackageName"/>
+        <module name="TypeName"/>
+        <module name="MethodName"/>
+        <module name="MemberName"/>
+        <module name="ParameterName"/>
+        <module name="LocalVariableName"/>
+        <module name="ConstantName"/>
+
+        <!-- if・for などは、1行でも必ず { } で囲む（あとで1行足したときに、囲みの外に出てしまう事故を防ぐ） -->
+        <module name="NeedBraces"/>
+        <!-- 1行に1つの文だけ、1つの宣言に1つの変数だけ -->
+        <module name="OneStatementPerLine"/>
+        <module name="MultipleVariableDeclarations"/>
+        <!-- long の数字は 1l ではなく 1L と書く（小文字の l は 1 と見まちがえやすい） -->
+        <module name="UpperEll"/>
+        <!-- 配列は String[] args の形で書く（String args[] にしない） -->
+        <module name="ArrayTypeStyle"/>
+        <!-- public static final の順番をそろえる -->
+        <module name="ModifierOrder"/>
+        <!-- 例外を受け止めて、何もせずに捨てない（空の catch を書かない） -->
+        <module name="EmptyCatchBlock"/>
+        <!-- equals を書き換えたら hashCode も書き換える -->
+        <module name="EqualsHashCode"/>
+        <!-- 記号（= や + や {）の前後に空白を入れる -->
+        <module name="WhitespaceAround">
+            <property name="allowEmptyConstructors" value="true"/>
+            <property name="allowEmptyMethods" value="true"/>
+            <property name="allowEmptyTypes" value="true"/>
+            <property name="allowEmptyLambdas" value="true"/>
+        </module>
+    </module>
+</module>

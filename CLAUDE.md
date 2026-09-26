@@ -28,14 +28,14 @@
 4. **master には直接触らない**
    - master への直接コミット、直接プッシュ、force push は禁止。
    - GitHub のルールセット `protect-master` でも拒否される。
-   - `protect-master` では、PR の自動チェック（GitHub Actions）の2つ、`frontend（lint・build）` と `backend（PMD・compile）` が成功していないと、マージできない。
+   - `protect-master` では、PR の自動チェック（GitHub Actions）の2つ、`frontend（lint・build）` と `backend（PMD・Checkstyle・test）` が成功していないと、マージできない。
    - `.claude/hooks/guard-master.ps1` のフックでも止められる。
 
 5. **PR を作る**
    - `gh pr create` で PR を作る。本文には `Closes #<イシュー番号>` を書く。こう書くと、マージしたときにイシューが自動で閉じる。
    - PR を作ったら、`gh pr checks <PR番号> --watch` で、2つの自動チェックが成功するのを確かめる。
      - 失敗（❌）したら、表示されたエラーを直してプッシュし直す。チェックはもう一度自動で動く。
-     - プッシュする前に、手元でも同じチェックを動かせる。`frontend` で `npm run lint` と `npm run build`、`backend` で `./gradlew pmdMain pmdTest compileJava`。
+     - プッシュする前に、手元でも同じチェックを動かせる。`frontend` で `npm run lint` と `npm run build`、`backend` で `./gradlew check`（コンパイル・PMD・Checkstyle・テスト。テストは Testcontainers が Docker で DB を用意するので、Docker Desktop を起動しておく）。
      - チェックの中身は `.github/workflows/ci.yml` にある。ジョブの名前を変えるときは、`protect-master` の必須チェックの名前も一緒に変える。変えないと、来ないチェックを待ち続けて、どの PR もマージできなくなる。
    - **マージはユーザーの確認を取ってから行う。** 勝手にマージしない。
    - マージ後は `git switch master` → `git pull` で最新化する。

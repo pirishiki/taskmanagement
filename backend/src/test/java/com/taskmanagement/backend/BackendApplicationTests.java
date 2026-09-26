@@ -2,8 +2,11 @@ package com.taskmanagement.backend;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Import;
 
+// アプリが起動できるかの確認。DB は Testcontainers の使い捨ての PostgreSQL を使う
 @SpringBootTest
+@Import(TestcontainersConfiguration.class)
 class BackendApplicationTests {
 
     @Test

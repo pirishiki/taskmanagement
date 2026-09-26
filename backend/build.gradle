@@ -2,6 +2,8 @@ plugins {
     id 'java'
     // PMD：Java のコードから「バグになりやすい書き方」を見つける道具（Gradle に最初から入っている）
     id 'pmd'
+    // Checkstyle：Java のコードの「書き方」（名前の付け方、1行の長さ、{ } の付け方など）がそろっているかを見る道具
+    id 'checkstyle'
     id 'org.springframework.boot' version '4.1.1'
     id 'io.spring.dependency-management' version '1.1.7'
 }
@@ -26,6 +28,10 @@ dependencies {
     runtimeOnly 'org.postgresql:postgresql'
     testImplementation 'org.springframework.boot:spring-boot-starter-data-jpa-test'
     testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
+    // Testcontainers：テストのたびに、Docker で使い捨ての PostgreSQL を用意する（テストのときだけ使う）
+    testImplementation 'org.springframework.boot:spring-boot-testcontainers'
+    testImplementation 'org.testcontainers:testcontainers-junit-jupiter'
+    testImplementation 'org.testcontainers:testcontainers-postgresql'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 
@@ -35,6 +41,14 @@ pmd {
     ruleSets = ['rulesets/java/quickstart.xml']
     // 見つかったものを、画面（コンソール）にも出す
     consoleOutput = true
+}
+
+// ./gradlew checkstyleMain checkstyleTest で動く（./gradlew check にも含まれる）。1件でも見つかると失敗する
+// 決まりは config/checkstyle/checkstyle.xml に書いてある（Gradle が最初に探す場所なので、場所の指定はいらない）
+checkstyle {
+    toolVersion = '14.1.0'
+    // 決まりの重さが「警告」のものも、1件でもあれば失敗にする
+    maxWarnings = 0
 }
 
 tasks.named('test') {
