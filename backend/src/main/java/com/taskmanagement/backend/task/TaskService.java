@@ -1,11 +1,18 @@
 package com.taskmanagement.backend.task;
 
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
+// @Transactional：メソッドの中の DB 操作を「ひとまとまり」にする。途中で失敗したら、そのメソッドでした変更を全部取り消す
+// クラスに付けると、すべての public メソッドに効く。読み取りだけのメソッドは readOnly = true にして、書き込まないことを伝える
 @Service
+@Transactional
 public class TaskService {
 
     private final TaskRepository taskRepository;
@@ -14,6 +21,7 @@ public class TaskService {
         this.taskRepository = taskRepository;
     }
 
+    @Transactional(readOnly = true)
     public List<Task> findTasks(String keyword) {
         if (keyword == null || keyword.isBlank()) {
             return taskRepository.findAllByOrderByStatusAscSortOrderAsc();
@@ -21,6 +29,7 @@ public class TaskService {
         return taskRepository.findByTextContainingIgnoreCaseOrderByStatusAscSortOrderAsc(keyword);
     }
 
+    @Transactional(readOnly = true)
     public Optional<Task> findTask(Long id) {
         return taskRepository.findById(id);
     }
@@ -74,33 +83,38 @@ public class TaskService {
         });
     }
 
+    // タスクを削除する。あれば消して true、なければ何もせず false を返す
+    public boolean deleteTask(Long id) {
+        if (!taskRepository.existsById(id)) {
+            return false;
+        }
+        taskRepository.deleteById(id);
+        return true;
+    }
+
     // ドラッグ＆ドロップ用：1つの列（status）の並び順を、送られてきた ID の順番どおりにまとめて書き換える
     // 別の列から移ってきたタスクも、ここで status が書き換わる
     public void reorder(ReorderRequest request) {
-        List<Task> tasks = taskRepository.findAllById(request.orderedIds());
+        // 取ってきたタスクを「ID → タスク」の表（Map）にしておくと、ID からすぐに引ける
+        Map<Long, Task> tasksById = taskRepository.findAllById(request.orderedIds()).stream()
+                .collect(Collectors.toMap(Task::getId, Function.identity()));
 
         for (int position = 0; position < request.orderedIds().size(); position++) {
-            Long taskId = request.orderedIds().get(position);
-            int order = position;
-            tasks.stream()
-                    .filter(task -> task.getId().equals(taskId))
-                    .findFirst()
-                    .ifPresent(task -> {
-                        task.setStatus(request.status());
-                        task.setSortOrder(order);
-                    });
+            Task task = tasksById.get(request.orderedIds().get(position));
+            if (task != null) { // 送られてきた ID のタスクがもう消えていたら、飛ばす
+                task.setStatus(request.status());
+                task.setSortOrder(position);
+            }
         }
 
-        taskRepository.saveAll(tasks);
+        taskRepository.saveAll(tasksById.values());
     }
 
     // 同じ列で一番大きい並び順より1つ大きくすると、列の一番下に入る（列が空なら 0）
     // 件数ではなく最大値を使うのは、削除で並び順に隙間ができても、ほかのタスクと同じ番号にならないようにするため
     private int nextOrderIn(String status) {
-        List<Task> tasks = taskRepository.findByStatusOrderBySortOrderAsc(status);
-        if (tasks.isEmpty()) {
-            return 0;
-        }
-        return tasks.get(tasks.size() - 1).getSortOrder() + 1;
+        return taskRepository.findTopByStatusOrderBySortOrderDesc(status)
+                .map(last -> last.getSortOrder() + 1)
+                .orElse(0);
     }
 }

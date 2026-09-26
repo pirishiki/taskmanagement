@@ -20,11 +20,10 @@ import java.util.List;
 @RequestMapping("/api/tasks")
 public class TaskController {
 
-    private final TaskRepository taskRepository;
+    // Controller は Service だけを使う（DB の操作は Service → Repository に任せる）
     private final TaskService taskService;
 
-    public TaskController(TaskRepository taskRepository, TaskService taskService) {
-        this.taskRepository = taskRepository;
+    public TaskController(TaskService taskService) {
         this.taskService = taskService;
     }
 
@@ -62,15 +61,14 @@ public class TaskController {
 
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteTask(@PathVariable Long id) {
-        if (!taskRepository.existsById(id)) {
+        if (!taskService.deleteTask(id)) {
             return ResponseEntity.notFound().build();
         }
-        taskRepository.deleteById(id);
         return ResponseEntity.noContent().build();
     }
 
     @PutMapping("/reorder")
-    public ResponseEntity<Void> reorder(@RequestBody ReorderRequest request) {
+    public ResponseEntity<Void> reorder(@Valid @RequestBody ReorderRequest request) {
         taskService.reorder(request);
         return ResponseEntity.noContent().build();
     }
