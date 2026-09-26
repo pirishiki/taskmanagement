@@ -2,7 +2,7 @@
 -- 実行方法（taskmanagement フォルダで）:
 --   docker compose exec -T postgres psql -U postgres -d taskdb < db/seed-test-data.sql
 -- 注意: tasks テーブルの中身をすべて消してから入れ直す（何度流しても同じ状態になる）
--- 前提: バックエンドを一度起動して tasks テーブルが作られていること
+-- 前提: バックエンドを一度起動して tasks テーブルが作られていること（テーブルは起動時に Flyway が V1 の SQL で作る）
 
 SET client_encoding = 'UTF8';
 

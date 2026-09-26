@@ -24,7 +24,7 @@ erDiagram
 
 ### tasks テーブル
 
-タスク1件を1行で表すテーブル。[Task.java](src/main/java/com/taskmanagement/backend/task/Task.java) のエンティティ定義に対応する。
+タスク1件を1行で表すテーブル。[Task.java](src/main/java/com/taskmanagement/backend/task/Task.java) のエンティティ定義に対応する。テーブルを作る SQL は [V1__create_tasks_table.sql](src/main/resources/db/migration/V1__create_tasks_table.sql)（下の「テーブルの変更の記録（Flyway）」を参照）。
 
 | カラム名 | 型 | NULL許可 | キー・制約 | 説明 |
 |---|---|---|---|---|
@@ -35,7 +35,7 @@ erDiagram
 | due_date | DATE | 可 | - | 期限日。未設定の場合はNULL |
 | sort_order | INTEGER | 不可 | NOT NULL | 同じstatus内での並び順（小さいほど上。削除で番号が飛ぶことがあり、0から連番とは限らない） |
 
-※ VARCHAR の長さ（255）は、Hibernate が文字の列を作るときの既定の長さ。
+※ VARCHAR の長さ（255）は、Flyway を入れる前に Hibernate がテーブルを自動で作っていたときの既定の長さ。V1 の SQL もそれに合わせている。
 ※ status・priority は、Java の中では enum（[TaskStatus.java](src/main/java/com/taskmanagement/backend/task/TaskStatus.java)・[TaskPriority.java](src/main/java/com/taskmanagement/backend/task/TaskPriority.java)）で持ち、DB には小文字の文字（`todo`・`high` など）で保存する。変換は [TaskStatusConverter.java](src/main/java/com/taskmanagement/backend/task/TaskStatusConverter.java)・[TaskPriorityConverter.java](src/main/java/com/taskmanagement/backend/task/TaskPriorityConverter.java) が受け持つ（JPA 標準の `@Enumerated(EnumType.STRING)` は大文字の `TODO` で保存するため使っていない）。
 
 ### インデックス
@@ -66,5 +66,23 @@ text や必須のチェック（`@NotBlank`・`@Size`・`@NotNull` など）は�
 補足:
 - `id` は `GenerationType.IDENTITY` で、行を追加するたびにデータベース側が自動で採番する
 - `sort_order` はアプリ側（[TaskService.java](src/main/java/com/taskmanagement/backend/task/TaskService.java)）が自動計算して設定するため、API利用者が指定する項目ではない。新しいタスクや、別の列に移ったタスクは「その列の最大値＋1」（列の一番下）になる
-- テーブル・カラムの実体は、アプリ起動時にHibernateが `Task.java` の定義から自動生成する（`spring.jpa.hibernate.ddl-auto=update`）
-- `idx_tasks_status_sort_order` は [TaskRepository.java](src/main/java/com/taskmanagement/backend/task/TaskRepository.java) の `findTopByStatusOrderBySortOrderDesc`（列の一番下の1件）/ `findAllByOrderByStatusAscSortOrderAsc` の検索・ソート処理を高速化するために付与した（[Task.java](src/main/java/com/taskmanagement/backend/task/Task.java) の `@Table(indexes = ...)` で定義）
+- `idx_tasks_status_sort_order` は [TaskRepository.java](src/main/java/com/taskmanagement/backend/task/TaskRepository.java) の `findTopByStatusOrderBySortOrderDesc`（列の一番下の1件）/ `findAllByOrderByStatusAscSortOrderAsc` の検索・ソート処理を高速化するために付与した（[V1__create_tasks_table.sql](src/main/resources/db/migration/V1__create_tasks_table.sql) の `CREATE INDEX` で定義）
+
+## テーブルの変更の記録（Flyway）
+
+テーブルの形（列・インデックス）は、Flyway の SQL ファイルとして記録する。アプリの起動時に、Flyway が `src/main/resources/db/migration` の `V番号__説明.sql` のうち、まだ当てていないものを番号の小さい順に DB へ当てる。どこまで当てたかは、DB の `flyway_schema_history` テーブルに記録される。
+
+| ファイル | 内容 |
+| --- | --- |
+| `V1__create_tasks_table.sql` | tasks テーブルとインデックス `idx_tasks_status_sort_order` を作る（Flyway を入れる前に Hibernate が自動で作っていた形と同じ） |
+
+- Hibernate はテーブルを作ったり直したりしない（`spring.jpa.hibernate.ddl-auto=validate`）。起動時に Task.java とテーブルが合っているかを確かめ、合わなければ起動を止める
+- Flyway を入れる前から使っていたデータ入りの DB は、`spring.flyway.baseline-on-migrate=true` により「V1 まで済み」（`BASELINE`）と記録され、V1 は流れない（データはそのまま）。空の DB（テスト・新しい環境）では V1 から流れる
+
+### テーブルを変えるときの手順
+
+1. 新しい番号の SQL ファイルを足す（例：`V2__add_memo_column.sql` に `ALTER TABLE tasks ADD COLUMN memo VARCHAR(255);`）
+2. [Task.java](src/main/java/com/taskmanagement/backend/task/Task.java) を、変えたあとのテーブルに合わせる
+3. このファイルの ER 図とテーブル定義を直す
+
+一度当てた SQL ファイル（V1 など）は書き換えない。すでに当て終わった DB には、書き換えた内容が届かず、新しい DB とテーブルの形が食い違うため（書き換えると、Flyway が起動時に中身の違いに気づいて止める）。
