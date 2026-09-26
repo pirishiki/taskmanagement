@@ -1,5 +1,6 @@
 import { useSortable } from '@dnd-kit/sortable'
-import { useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
+import { createPortal } from 'react-dom'
 import type { NewTask, Task, TaskPatch } from '../types/task'
 
 // 優先度ごとの表示名と色（試作版 style.css と同じ色）
@@ -72,6 +73,29 @@ function TaskCard({ task, onUpdate, onPatch, onDelete, canDrag }: Props) {
     id: task.id,
     disabled: editPosition !== null || !canDrag,
   })
+
+  // 編集中だけ、スクロールと画面の大きさの変化を見張り、そのたびにカードの位置を測り直す
+  // （編集用のカードが、元のカードにくっついて動くようにするため。測るのが ✎ を押したときの1回だけだと、スクロールでずれる）
+  const isEditing = editPosition !== null
+  useEffect(() => {
+    if (!isEditing) {
+      return
+    }
+    function followCard() {
+      const rect = cardRef.current?.getBoundingClientRect()
+      if (rect) {
+        setEditPosition(rect)
+      }
+    }
+    // true：ページ全体だけでなく、ボードの横スクロールなど、中の部分のスクロールも拾う
+    window.addEventListener('scroll', followCard, true)
+    window.addEventListener('resize', followCard)
+    // 後片付け：編集が終わったら見張りをやめる（残しておくと、編集していないのに測り続けてしまう）
+    return () => {
+      window.removeEventListener('scroll', followCard, true)
+      window.removeEventListener('resize', followCard)
+    }
+  }, [isEditing])
 
   // ✎ を押したとき：欄に今のタスクの値を入れ、カードの位置を測ってから、編集を始める
   function startEditing() {
@@ -175,80 +199,84 @@ function TaskCard({ task, onUpdate, onPatch, onDelete, canDrag }: Props) {
         <CardLabels priority={task.priority} dueDate={task.dueDate} />
       </div>
 
-      {editPosition && (
-        // 画面全体を暗くする幕。幕をクリックするとキャンセル
-        <div className="fixed inset-0 z-50 bg-black/60" onClick={cancelEditing}>
-          <div
-            className="absolute flex items-start gap-2"
-            style={{ top: editPosition.top, left: editPosition.left }}
-            // 編集用のカードやメニューをクリックしても、幕のクリック（キャンセル）にならないようにする
-            onClick={(event) => event.stopPropagation()}
-          >
-            {/* 左：編集用のカードと保存ボタン */}
-            <form onSubmit={handleSubmit} style={{ width: editPosition.width }}>
-              <div className="rounded bg-white p-3 shadow-sm">
-                <textarea
-                  value={text}
-                  onChange={(event) => setText(event.target.value)}
-                  onKeyDown={handleKeyDown}
-                  autoFocus
-                  // バックエンドと同じく 255 文字まで（DB の列が 255 文字までのため）
-                  maxLength={255}
-                  rows={3}
-                  className="w-full resize-none text-sm text-gray-800 outline-none"
-                />
-                <CardLabels priority={priority} dueDate={dueDate === '' ? null : dueDate} />
-              </div>
-              <button
-                type="submit"
-                className="mt-2 rounded bg-[#0079bf] px-4 py-1.5 text-sm text-white hover:bg-[#026aa7]"
-              >
-                保存
-              </button>
-            </form>
-
-            {/* 右：メニュー（優先度・期限）。ここで変えた値は、保存ボタンを押したときにまとめて送る */}
-            <div className="flex w-44 flex-col gap-2">
-              <div className="rounded bg-black/70 p-2 text-sm text-white">
-                <p className="mb-1 text-xs text-gray-300">優先度</p>
-                <div className="flex gap-1">
-                  {priorities.map((p) => (
+      {/* 編集画面は、createPortal で body の直下（画面の一番外側）に出す */}
+      {/* カードの内側に出すと、カードの見た目の設定（dnd-kit の transform など）に引きずられ、幕が画面全体を覆えなくなるため */}
+      {editPosition &&
+        createPortal(
+          // 画面全体を暗くする幕。幕をクリックするとキャンセル
+          <div className="fixed inset-0 z-50 bg-black/60" onClick={cancelEditing}>
+            <div
+              className="absolute flex items-start gap-2"
+              style={{ top: editPosition.top, left: editPosition.left }}
+              // 編集用のカードやメニューをクリックしても、幕のクリック（キャンセル）にならないようにする
+              onClick={(event) => event.stopPropagation()}
+            >
+              {/* 左：編集用のカードと保存ボタン */}
+              <form onSubmit={handleSubmit} style={{ width: editPosition.width }}>
+                <div className="rounded bg-white p-3 shadow-sm">
+                  <textarea
+                    value={text}
+                    onChange={(event) => setText(event.target.value)}
+                    onKeyDown={handleKeyDown}
+                    autoFocus
+                    // バックエンドと同じく 255 文字まで（DB の列が 255 文字までのため）
+                    maxLength={255}
+                    rows={3}
+                    className="w-full resize-none text-sm text-gray-800 outline-none"
+                  />
+                  <CardLabels priority={priority} dueDate={dueDate === '' ? null : dueDate} />
+                </div>
+                <button
+                  type="submit"
+                  className="mt-2 rounded bg-[#0079bf] px-4 py-1.5 text-sm text-white hover:bg-[#026aa7]"
+                >
+                  保存
+                </button>
+              </form>
+  
+              {/* 右：メニュー（優先度・期限）。ここで変えた値は、保存ボタンを押したときにまとめて送る */}
+              <div className="flex w-44 flex-col gap-2">
+                <div className="rounded bg-black/70 p-2 text-sm text-white">
+                  <p className="mb-1 text-xs text-gray-300">優先度</p>
+                  <div className="flex gap-1">
+                    {priorities.map((p) => (
+                      <button
+                        key={p}
+                        type="button"
+                        onClick={() => setPriority(p)}
+                        className={`flex flex-1 items-center justify-center gap-1 rounded px-2 py-1 ${
+                          priority === p ? 'bg-white text-gray-800' : 'hover:bg-white/20'
+                        }`}
+                      >
+                        <span className={`inline-block h-2.5 w-2.5 rounded-full ${priorityColors[p]}`} />
+                        {priorityLabels[p]}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="rounded bg-black/70 p-2 text-sm text-white">
+                  <p className="mb-1 text-xs text-gray-300">期限</p>
+                  <input
+                    type="date"
+                    value={dueDate}
+                    onChange={(event) => setDueDate(event.target.value)}
+                    className="w-full rounded bg-white px-2 py-1 text-gray-800"
+                  />
+                  {dueDate !== '' && (
                     <button
-                      key={p}
                       type="button"
-                      onClick={() => setPriority(p)}
-                      className={`flex flex-1 items-center justify-center gap-1 rounded px-2 py-1 ${
-                        priority === p ? 'bg-white text-gray-800' : 'hover:bg-white/20'
-                      }`}
+                      onClick={() => setDueDate('')}
+                      className="mt-1 w-full rounded px-2 py-1 text-left hover:bg-white/20"
                     >
-                      <span className={`inline-block h-2.5 w-2.5 rounded-full ${priorityColors[p]}`} />
-                      {priorityLabels[p]}
+                      期限を消す
                     </button>
-                  ))}
+                  )}
                 </div>
               </div>
-              <div className="rounded bg-black/70 p-2 text-sm text-white">
-                <p className="mb-1 text-xs text-gray-300">期限</p>
-                <input
-                  type="date"
-                  value={dueDate}
-                  onChange={(event) => setDueDate(event.target.value)}
-                  className="w-full rounded bg-white px-2 py-1 text-gray-800"
-                />
-                {dueDate !== '' && (
-                  <button
-                    type="button"
-                    onClick={() => setDueDate('')}
-                    className="mt-1 w-full rounded px-2 py-1 text-left hover:bg-white/20"
-                  >
-                    期限を消す
-                  </button>
-                )}
-              </div>
             </div>
-          </div>
-        </div>
-      )}
+          </div>,
+          document.body,
+        )}
     </>
   )
 }
