@@ -1,0 +1,54 @@
+# 自動チェック（CI）：PR を作ったときと、master に入ったときに、GitHub のサーバーの上で動く
+# フロントとバックエンドのチェックを、別々の「ジョブ」として同時に動かす
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+
+# このチェックは、リポジトリの中身を読むだけ（書き換えない）
+permissions:
+  contents: read
+
+jobs:
+  frontend:
+    name: frontend（lint・build）
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      # リポジトリの中身を取ってくる
+      - uses: actions/checkout@v7
+      # Node.js を用意する（README の技術スタックと同じ 24 系）。npm のダウンロードを次回のために取っておく
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      # package-lock.json どおりに部品を入れる（npm install とちがい、lock ファイルを書き換えない）
+      - run: npm ci
+      # 書き方のチェック（警告が1つでもあれば失敗）
+      - run: npm run lint
+      # 型チェックと、公開用のファイル作り
+      - run: npm run build
+
+  backend:
+    name: backend（PMD・compile）
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v7
+      # Java 21 を用意する（手元と同じ Eclipse Temurin）
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 21
+      # Gradle を用意し、ダウンロードした部品を次回のために取っておく
+      - uses: gradle/actions/setup-gradle@v6
+      # PMD（バグになりやすい書き方のチェック）と、コンパイル
+      # テスト（./gradlew test）は起動中の DB が必要なので、ここでは動かさない
+      - run: ./gradlew pmdMain pmdTest compileJava

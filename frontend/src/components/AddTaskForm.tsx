@@ -1,6 +1,13 @@
 import { useState, type FormEvent, type KeyboardEvent } from 'react'
 import type { NewTask, Task } from '../types/task'
 
+// 優先度の選択肢。画面に出す <option> も、選ばれた値の確かめも、この一覧から作る
+const priorityOptions: { value: Task['priority']; label: string }[] = [
+  { value: 'high', label: '高' },
+  { value: 'medium', label: '中' },
+  { value: 'low', label: '低' },
+]
+
 type Props = {
   // status（どの列か）は Column が決めるので、ここでは受け取らない
   onAdd: (task: Omit<NewTask, 'status'>) => void
@@ -67,18 +74,28 @@ function AddTaskForm({ onAdd }: Props) {
         onChange={(event) => setText(event.target.value)}
         onKeyDown={handleKeyDown}
         autoFocus
+        // バックエンドと同じく 255 文字まで（DB の列が 255 文字までのため）
+        maxLength={255}
         placeholder="このカードのタイトルを入力…"
         className="rounded bg-white px-3 py-2 text-sm shadow-sm outline-none"
       />
       <div className="flex gap-2">
         <select
           value={priority}
-          onChange={(event) => setPriority(event.target.value as Task['priority'])}
+          onChange={(event) => {
+            // 選ばれた値を選択肢の一覧から探す。見つかれば、その値は必ず 'high' | 'medium' | 'low' のどれか
+            const selected = priorityOptions.find((option) => option.value === event.target.value)
+            if (selected) {
+              setPriority(selected.value)
+            }
+          }}
           className="rounded border border-gray-300 bg-white px-2 py-1 text-sm"
         >
-          <option value="high">高</option>
-          <option value="medium">中</option>
-          <option value="low">低</option>
+          {priorityOptions.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
         </select>
         <input
           type="date"

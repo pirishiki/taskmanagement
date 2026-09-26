@@ -29,11 +29,13 @@ erDiagram
 | カラム名 | 型 | NULL許可 | キー・制約 | 説明 |
 |---|---|---|---|---|
 | id | BIGINT | 不可 | PK（主キー、自動採番） | タスクを一意に識別する番号 |
-| text | VARCHAR | 不可 | NOT NULL | タスクの内容 |
-| status | VARCHAR | 不可 | NOT NULL | タスクの状態（例: todo, doing, done） |
-| priority | VARCHAR | 不可 | NOT NULL | 優先度（例: low, medium, high） |
+| text | VARCHAR(255) | 不可 | NOT NULL | タスクの内容（255文字まで） |
+| status | VARCHAR(255) | 不可 | NOT NULL | タスクの状態（todo, doing, done のどれか） |
+| priority | VARCHAR(255) | 不可 | NOT NULL | 優先度（high, medium, low のどれか） |
 | due_date | DATE | 可 | - | 期限日。未設定の場合はNULL |
-| sort_order | INTEGER | 不可 | NOT NULL | 同じstatus内での並び順（0から始まる） |
+| sort_order | INTEGER | 不可 | NOT NULL | 同じstatus内での並び順（小さいほど上。削除で番号が飛ぶことがあり、0から連番とは限らない） |
+
+※ VARCHAR の長さ（255）は、Hibernate が `Task.java` の `String` から作るときの既定の長さ。
 
 ### インデックス
 
@@ -44,16 +46,24 @@ erDiagram
 
 ### アプリ側バリデーション（DBの制約とは別レイヤー）
 
-DBのNOT NULL制約は「NULLかどうか」しか防げないため、「空文字（`""`）」や「空白だけの文字列（`"   "`）」はDBレベルでは弾けない。これを防ぐため、アプリ側（Java）でバリデーションを追加している。
+DBのNOT NULL制約は「NULLかどうか」しか防げないため、「空文字（`""`）」や「空白だけの文字列（`"   "`）」はDBレベルでは弾けない。また、255文字を超える文字列や、決められた値以外の status・priority も、DBに届いてから失敗したり、そのまま入ってしまったりする。これを防ぐため、アプリ側（Java）でバリデーションを追加している。
 
-| 対象 | チェック内容 | 実装場所 |
-|---|---|---|
-| text | 空文字・空白だけの文字列を禁止（前後の空白を除いた上で1文字以上必須） | [TaskRequest.java](src/main/java/com/taskmanagement/backend/task/TaskRequest.java) の `@NotBlank`、[TaskController.java](src/main/java/com/taskmanagement/backend/task/TaskController.java) の `@Valid` |
+どのリクエストも、[TaskController.java](src/main/java/com/taskmanagement/backend/task/TaskController.java) の `@Valid` でチェックされる。
 
-違反した場合は `400 Bad Request` が返る。DBのNOT NULL制約が「最低限の防波堤（NULLだけは防ぐ）」、アプリ側の`@NotBlank`が「実用的な入力チェック（空文字・空白も防ぐ）」という役割分担になっている。
+| API | 対象 | チェック内容 | 実装場所 |
+|---|---|---|---|
+| POST・PUT | text | 必須。空文字・空白だけは不可（`@NotBlank`）。255文字まで（`@Size`） | [TaskRequest.java](src/main/java/com/taskmanagement/backend/task/TaskRequest.java) |
+| POST・PUT | status | 省略可。送るなら todo / doing / done のどれか（`@Pattern`） | 同上 |
+| POST・PUT | priority | 省略可。送るなら high / medium / low のどれか（`@Pattern`） | 同上 |
+| PATCH | text | 省略可。送るなら空白だけは不可（`@Pattern`）、255文字まで（`@Size`） | [TaskPatchRequest.java](src/main/java/com/taskmanagement/backend/task/TaskPatchRequest.java) |
+| PATCH | status・priority | 省略可。送るなら決められた値のどれか（`@Pattern`） | 同上 |
+| 並び替え（PUT /reorder） | status | 必須（`@NotNull`）。todo / doing / done のどれか（`@Pattern`） | [ReorderRequest.java](src/main/java/com/taskmanagement/backend/task/ReorderRequest.java) |
+| 並び替え（PUT /reorder） | orderedIds | 必須（`@NotNull`）。中に空（null）の ID を含めない | 同上 |
+
+違反した場合は `400 Bad Request` が返り、DBには何も書き込まれない。DBのNOT NULL制約が「最低限の防波堤（NULLだけは防ぐ）」、アプリ側のバリデーションが「実用的な入力チェック（空文字・長さ・決められた値も防ぐ）」という役割分担になっている。
 
 補足:
 - `id` は `GenerationType.IDENTITY` で、行を追加するたびにデータベース側が自動で採番する
-- `sort_order` はアプリ側（[TaskController.java](src/main/java/com/taskmanagement/backend/task/TaskController.java)）が自動計算して設定するため、API利用者が指定する項目ではない
+- `sort_order` はアプリ側（[TaskService.java](src/main/java/com/taskmanagement/backend/task/TaskService.java)）が自動計算して設定するため、API利用者が指定する項目ではない。新しいタスクや、別の列に移ったタスクは「その列の最大値＋1」（列の一番下）になる
 - テーブル・カラムの実体は、アプリ起動時にHibernateが `Task.java` の定義から自動生成する（`spring.jpa.hibernate.ddl-auto=update`）
-- `idx_tasks_status_sort_order` は [TaskRepository.java](src/main/java/com/taskmanagement/backend/task/TaskRepository.java) の `findByStatusOrderBySortOrderAsc` / `findAllByOrderByStatusAscSortOrderAsc` の検索・ソート処理を高速化するために付与した（[Task.java](src/main/java/com/taskmanagement/backend/task/Task.java) の `@Table(indexes = ...)` で定義）
+- `idx_tasks_status_sort_order` は [TaskRepository.java](src/main/java/com/taskmanagement/backend/task/TaskRepository.java) の `findTopByStatusOrderBySortOrderDesc`（列の一番下の1件）/ `findAllByOrderByStatusAscSortOrderAsc` の検索・ソート処理を高速化するために付与した（[Task.java](src/main/java/com/taskmanagement/backend/task/Task.java) の `@Table(indexes = ...)` で定義）

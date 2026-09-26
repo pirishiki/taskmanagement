@@ -4,6 +4,12 @@ import type { NewTask, SortCriterion, Task, TaskPatch } from '../types/task'
 import AddTaskForm from './AddTaskForm'
 import TaskCard from './TaskCard'
 
+// 並び替えの選択肢。画面に出す <option> も、選ばれた値の確かめも、この一覧から作る
+const sortOptions: { value: SortCriterion; label: string }[] = [
+  { value: 'priority', label: '優先度順' },
+  { value: 'dueDate', label: '期限が近い順' },
+]
+
 type Props = {
   title: string
   status: Task['status']
@@ -29,7 +35,13 @@ function Column({ title, status, tasks, onAdd, onUpdate, onPatch, onDelete, onSo
         {/* 検索中は、見えていないタスクと並び順がずれるのを防ぐため、ドラッグと同じく使えなくする */}
         <select
           value=""
-          onChange={(event) => onSort(status, event.target.value as SortCriterion)}
+          onChange={(event) => {
+            // 選ばれた値を選択肢の一覧から探す。見つかれば、その値は必ず 'priority' | 'dueDate' のどちらか
+            const selected = sortOptions.find((option) => option.value === event.target.value)
+            if (selected) {
+              onSort(status, selected.value)
+            }
+          }}
           disabled={!canDrag}
           title={canDrag ? undefined : '検索中は並び替えできません'}
           className="rounded bg-white px-1 py-0.5 text-xs text-gray-600 disabled:opacity-50"
@@ -37,8 +49,11 @@ function Column({ title, status, tasks, onAdd, onUpdate, onPatch, onDelete, onSo
           <option value="" disabled>
             並び替え
           </option>
-          <option value="priority">優先度順</option>
-          <option value="dueDate">期限が近い順</option>
+          {sortOptions.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
         </select>
       </div>
       {/* SortableContext：この中のカードは、上下に並び替えられる。items には並んでいる順の id を渡す */}

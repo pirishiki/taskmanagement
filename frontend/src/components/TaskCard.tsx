@@ -17,6 +17,12 @@ const priorityColors: Record<Task['priority'], string> = {
 
 const priorities: Task['priority'][] = ['high', 'medium', 'low']
 
+// カードの中のボタン（○・✎・×）で押したキーを、外側のカードに伝えない
+// カード全体に dnd-kit の「キーボードでつかむ仕掛け」が付いているため、止めないと Enter や Space でボタンが押されず、ドラッグが始まってしまう
+function stopKeyFromReachingCard(event: KeyboardEvent<HTMLButtonElement>) {
+  event.stopPropagation()
+}
+
 type Props = {
   task: Task
   onUpdate: (id: number, task: NewTask) => void
@@ -137,6 +143,7 @@ function TaskCard({ task, onUpdate, onPatch, onDelete, canDrag }: Props) {
             <button
               type="button"
               onClick={() => onPatch(task.id, { status: 'done' })}
+              onKeyDown={stopKeyFromReachingCard}
               aria-label="完了にする"
               title="完了にする"
               className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-gray-400 text-[10px] leading-none text-transparent hover:border-[#61bd4f] hover:bg-[#61bd4f] hover:text-white"
@@ -148,6 +155,7 @@ function TaskCard({ task, onUpdate, onPatch, onDelete, canDrag }: Props) {
           <button
             type="button"
             onClick={startEditing}
+            onKeyDown={stopKeyFromReachingCard}
             aria-label="編集"
             className="shrink-0 rounded px-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
           >
@@ -156,6 +164,7 @@ function TaskCard({ task, onUpdate, onPatch, onDelete, canDrag }: Props) {
           <button
             type="button"
             onClick={handleDeleteClick}
+            onKeyDown={stopKeyFromReachingCard}
             aria-label="削除"
             title="削除"
             className="shrink-0 rounded px-1 text-gray-400 hover:bg-gray-100 hover:text-[#eb5a46]"
@@ -183,6 +192,8 @@ function TaskCard({ task, onUpdate, onPatch, onDelete, canDrag }: Props) {
                   onChange={(event) => setText(event.target.value)}
                   onKeyDown={handleKeyDown}
                   autoFocus
+                  // バックエンドと同じく 255 文字まで（DB の列が 255 文字までのため）
+                  maxLength={255}
                   rows={3}
                   className="w-full resize-none text-sm text-gray-800 outline-none"
                 />

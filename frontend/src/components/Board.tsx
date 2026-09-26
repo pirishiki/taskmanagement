@@ -60,6 +60,8 @@ function Board({ tasks, onAdd, onUpdate, onPatch, onDelete, onMove, onSort, canD
   // 落とした先（over）が、どの列かを調べる。列なら id が 'todo' などの文字、カードなら数字
   function statusOf(list: Task[], overId: UniqueIdentifier) {
     if (typeof overId === 'string') {
+      // 文字の id を持つのは、Column の useDroppable({ id: status }) で作った列だけなので、status と決めてよい
+      // （dnd-kit の id は string | number の型しか持てないため、ここは as で決めつける）
       return overId as Task['status']
     }
     return list.find((task) => task.id === overId)?.status
