@@ -10,8 +10,8 @@ import java.time.LocalDate;
 // status と priority は enum なので、決まった値以外は JSON を読む時点で断られる（400）
 // text は 255 文字まで（TaskRequest と同じ理由）
 public record TaskPatchRequest(
-        @Pattern(regexp = "(?s).*\\S.*", message = "text must not be blank")
-        @Size(max = 255, message = "text must be at most 255 characters") String text,
+        @Pattern(regexp = "(?s).*\\S.*", message = "タスク名を入力してください")
+        @Size(max = 255, message = "タスク名は255文字までにしてください") String text,
         TaskStatus status,
         TaskPriority priority,
         LocalDate dueDate) {
