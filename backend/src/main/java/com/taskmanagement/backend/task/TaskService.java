@@ -35,8 +35,9 @@ public class TaskService {
     }
 
     public Task createTask(TaskRequest request) {
-        String status = request.status() != null ? request.status() : "todo";
-        String priority = request.priority() != null ? request.priority() : "medium";
+        // 省略されたときの値：status は「やるべきこと」、priority は「中」
+        TaskStatus status = request.status() != null ? request.status() : TaskStatus.TODO;
+        TaskPriority priority = request.priority() != null ? request.priority() : TaskPriority.MEDIUM;
 
         Task task = new Task(request.text().trim(), status, priority, request.dueDate(), nextOrderIn(status));
         return taskRepository.save(task);
@@ -46,8 +47,8 @@ public class TaskService {
     public Optional<Task> updateTask(Long id, TaskRequest request) {
         return taskRepository.findById(id).map(task -> {
             // status と priority は省略されたら今の値のまま（null を入れない）
-            String status = request.status() != null ? request.status() : task.getStatus();
-            String priority = request.priority() != null ? request.priority() : task.getPriority();
+            TaskStatus status = request.status() != null ? request.status() : task.getStatus();
+            TaskPriority priority = request.priority() != null ? request.priority() : task.getPriority();
 
             // 別の列に移るときは、移動先の列の一番下に置く
             if (!status.equals(task.getStatus())) {
@@ -112,7 +113,7 @@ public class TaskService {
 
     // 同じ列で一番大きい並び順より1つ大きくすると、列の一番下に入る（列が空なら 0）
     // 件数ではなく最大値を使うのは、削除で並び順に隙間ができても、ほかのタスクと同じ番号にならないようにするため
-    private int nextOrderIn(String status) {
+    private int nextOrderIn(TaskStatus status) {
         return taskRepository.findTopByStatusOrderBySortOrderDesc(status)
                 .map(last -> last.getSortOrder() + 1)
                 .orElse(0);

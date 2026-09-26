@@ -1,6 +1,7 @@
 package com.taskmanagement.backend.task;
 
 import jakarta.persistence.Column;
+import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -21,11 +22,15 @@ public class Task {
     @Column(nullable = false)
     private String text;
 
+    // DB には小文字（"todo" など）で保存する。変換は TaskStatusConverter が受け持つ
     @Column(nullable = false)
-    private String status;
+    @Convert(converter = TaskStatusConverter.class)
+    private TaskStatus status;
 
+    // DB には小文字（"high" など）で保存する。変換は TaskPriorityConverter が受け持つ
     @Column(nullable = false)
-    private String priority;
+    @Convert(converter = TaskPriorityConverter.class)
+    private TaskPriority priority;
 
     private LocalDate dueDate;
 
@@ -36,7 +41,7 @@ public class Task {
         // JPA（Hibernate）が DB から読んだ行を Task に詰めるときに使う。アプリのコードからは呼ばない
     }
 
-    public Task(String text, String status, String priority, LocalDate dueDate, Integer sortOrder) {
+    public Task(String text, TaskStatus status, TaskPriority priority, LocalDate dueDate, Integer sortOrder) {
         this.text = text;
         this.status = status;
         this.priority = priority;
@@ -56,19 +61,19 @@ public class Task {
         this.text = text;
     }
 
-    public String getStatus() {
+    public TaskStatus getStatus() {
         return status;
     }
 
-    public void setStatus(String status) {
+    public void setStatus(TaskStatus status) {
         this.status = status;
     }
 
-    public String getPriority() {
+    public TaskPriority getPriority() {
         return priority;
     }
 
-    public void setPriority(String priority) {
+    public void setPriority(TaskPriority priority) {
         this.priority = priority;
     }
 
