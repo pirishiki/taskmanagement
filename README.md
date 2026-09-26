@@ -94,14 +94,19 @@ Javaとspringbootを使えると企業が採用しやすい。データにもあ
 - バックエンドに PMD を入れた（空のメソッドの理由の書き漏れなど3件を見つけ、2件を直し、的外れな1件は理由を書いて止めた）
 - GitHub Actions で、PR ごとにこれらのチェックが自動で動くようにした
 
+### あとの PR で直したもの
+
+| # | 重さ | 場所 | どんな問題だったか | 直し方 | イシュー |
+|---|---|---|---|---|---|
+| 5 | 中 | `TaskController.java` | DB の形（エンティティ `Task`）をそのまま API の返事にしていた。DB の形を変えると、画面への返事の形も勝手に変わってしまう | 返事専用の型（DTO）`TaskResponse` を作り、Controller はそれに詰め替えて返す。返事の中身は変わらないことを、変更の前後で比べて確かめた | #21 |
+| 6 | 中 | `Task.java`、各 Request | status・priority を文字列＋正規表現で持っていた。Java のコードの中では `"tood"` のような書き間違いも作れてしまう | enum（`TaskStatus`・`TaskPriority`）にした。JSON と DB では今までどおり小文字（`@JsonValue`・`@JsonCreator` と AttributeConverter） | #21 |
+
 ### 今後の候補（別の PR で直す）
 
 それぞれ新しい考え方を1つ覚える必要があるので、別の PR にした。[要件定義書.md](要件定義書.md) の 5.2 に記録してある。
 
 | # | 重さ | 場所 | どんな問題か | 標準のやり方 | 要件定義書 |
 |---|---|---|---|---|---|
-| 5 | 中 | `TaskController.java` | DB の形（エンティティ）をそのまま API の返事にしている | 返事専用の型（DTO） | No.18 |
-| 6 | 中 | `Task.java`、各 Request | status・priority を文字列＋正規表現で持っている | Java の enum | No.19 |
 | 9 | 中 | `application.properties` | 起動のたびにテーブルを自動で直している（`ddl-auto=update`） | Flyway などでテーブルの変更を記録する | No.20 |
 | 10 | 低 | バックエンド全体 | エラーの返事の形がばらばら。エラーを1か所で受け止める仕組み（グローバル例外ハンドラー）がない | `@RestControllerAdvice` のグローバル例外ハンドラーで、Spring 標準の ProblemDetail の形にそろえて返す | No.21（#16 と同じ PR） |
 | 11 | 中 | `BackendApplicationTests.java` | テストが起動中の Docker の DB に依存している | Testcontainers（使い捨ての DB） | No.17 |
