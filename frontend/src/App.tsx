@@ -46,6 +46,7 @@ function App() {
   const latestRequest = useRef(0)
 
   // タスクを取ってきて、届いたら画面のメモ（tasks）を書き換える
+  // 成功しても、エラーのメッセージは消さない（並び替えの失敗のあとで取り直したとき、失敗のメッセージを残すため）
   // useCallback：画面を描き直しても、同じ関数のまま使い回す（useEffect の依存に書いても、毎回動き直さないようにするため）
   const loadTasks = useCallback((keyword?: string) => {
     latestRequest.current += 1
@@ -58,7 +59,6 @@ function App() {
           return // もっと新しい取得を頼んであるので、この古い結果は捨てる
         }
         setTasks(result)
-        setError(null)
       })
       .catch((error) => {
         if (!isLatest()) {
@@ -75,7 +75,9 @@ function App() {
   }, [])
 
   // 検索ボタンか Enter キーで呼ばれる
+  // 前のエラーのメッセージは、ここで消す（取り直しに失敗すれば、loadTasks がまた出す）
   function handleSearch(keyword: string) {
+    setError(null)
     setLoading(true)
     setSearchKeyword(keyword)
     loadTasks(keyword)
