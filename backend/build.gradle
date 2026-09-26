@@ -26,6 +26,10 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-webmvc'
     implementation 'org.springframework.boot:spring-boot-starter-validation'
     runtimeOnly 'org.postgresql:postgresql'
+    // Flyway：テーブルの形を SQL ファイル（V1, V2, …）として記録し、起動時に、まだ当てていないものを順番に DB へ当てる
+    implementation 'org.springframework.boot:spring-boot-starter-flyway'
+    // Flyway の PostgreSQL 用の部品（Flyway 本体は、DB の種類ごとの部品を別に入れる決まり）
+    runtimeOnly 'org.flywaydb:flyway-database-postgresql'
     testImplementation 'org.springframework.boot:spring-boot-starter-data-jpa-test'
     testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
     // Testcontainers：テストのたびに、Docker で使い捨ての PostgreSQL を用意する（テストのときだけ使う）

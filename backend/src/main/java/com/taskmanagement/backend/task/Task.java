@@ -6,13 +6,15 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
-import jakarta.persistence.Index;
 import jakarta.persistence.Table;
 
 import java.time.LocalDate;
 
+// タスク1件を表す。DB の tasks テーブルの1行に対応する
+// テーブルの形（列・インデックス）の正本は Flyway の SQL（src/main/resources/db/migration）。ここを変えたら、SQL も足すこと
+// （Hibernate は、ここと DB のテーブルが合っているかを起動時に確かめるだけ）
 @Entity
-@Table(name = "tasks", indexes = @Index(name = "idx_tasks_status_sort_order", columnList = "status, sort_order"))
+@Table(name = "tasks")
 public class Task {
 
     @Id
