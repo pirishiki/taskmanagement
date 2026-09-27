@@ -223,6 +223,10 @@ function App() {
 
   return (
     <div className="min-h-screen bg-sky-100 p-6">
+      {/* 指で操作する画面（スマホ等）のときだけ表示する。PC（マウス）では hidden のまま */}
+      <p className="mb-4 hidden rounded bg-yellow-100 p-3 text-yellow-900 pointer-coarse:block">
+        スマートフォンでは閲覧のみ可能です。タスクの追加・削除・移動はPCで行ってください
+      </p>
       <h1 className="mb-6 text-3xl font-bold text-[#1c3d5a]">Task Board</h1>
       <SearchBar onSearch={handleSearch} searching={searchKeyword !== ''} />
       {loading && <p className="mb-4 text-gray-600">読み込み中…</p>}
