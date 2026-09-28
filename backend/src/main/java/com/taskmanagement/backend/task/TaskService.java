@@ -1,8 +1,11 @@
 package com.taskmanagement.backend.task;
 
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -21,12 +24,16 @@ public class TaskService {
         this.taskRepository = taskRepository;
     }
 
+    // タスクを取ってくる。keyword・priorities・due は、どれも省略できる（null なら、その条件では絞らない）
+    // 条件が2つ以上あるときは、全部を満たすタスクだけを返す（AND）
     @Transactional(readOnly = true)
-    public List<Task> findTasks(String keyword) {
-        if (keyword == null || keyword.isBlank()) {
-            return taskRepository.findAllByOrderByStatusAscSortOrderAsc();
-        }
-        return taskRepository.findByTextContainingIgnoreCaseOrderByStatusAscSortOrderAsc(keyword);
+    public List<Task> findTasks(String keyword, List<TaskPriority> priorities, DueFilter due) {
+        Specification<Task> conditions = Specification.allOf(
+                TaskSpecifications.textContains(keyword),
+                TaskSpecifications.priorityIn(priorities),
+                TaskSpecifications.dueMatches(due, LocalDate.now()));
+        // 並び順は、列（status）ごとにまとめ、その中は sortOrder の小さい順
+        return taskRepository.findAll(conditions, Sort.by("status", "sortOrder"));
     }
 
     @Transactional(readOnly = true)
