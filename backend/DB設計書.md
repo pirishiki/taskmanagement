@@ -66,7 +66,7 @@ text や必須のチェック（`@NotBlank`・`@Size`・`@NotNull` など）は�
 補足:
 - `id` は `GenerationType.IDENTITY` で、行を追加するたびにデータベース側が自動で採番する
 - `sort_order` はアプリ側（[TaskService.java](src/main/java/com/taskmanagement/backend/task/TaskService.java)）が自動計算して設定するため、API利用者が指定する項目ではない。新しいタスクや、別の列に移ったタスクは「その列の最大値＋1」（列の一番下）になる
-- `idx_tasks_status_sort_order` は [TaskRepository.java](src/main/java/com/taskmanagement/backend/task/TaskRepository.java) の `findTopByStatusOrderBySortOrderDesc`（列の一番下の1件）/ `findAllByOrderByStatusAscSortOrderAsc` の検索・ソート処理を高速化するために付与した（[V1__create_tasks_table.sql](src/main/resources/db/migration/V1__create_tasks_table.sql) の `CREATE INDEX` で定義）
+- `idx_tasks_status_sort_order` は [TaskRepository.java](src/main/java/com/taskmanagement/backend/task/TaskRepository.java) の `findTopByStatusOrderBySortOrderDesc`（列の一番下の1件）/ 一覧の取得（[TaskService.java](src/main/java/com/taskmanagement/backend/task/TaskService.java) の `findTasks`。status→sort_order の順）の検索・ソート処理を高速化するために付与した（[V1__create_tasks_table.sql](src/main/resources/db/migration/V1__create_tasks_table.sql) の `CREATE INDEX` で定義）
 
 ## テーブルの変更の記録（Flyway）
 
