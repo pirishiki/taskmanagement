@@ -65,7 +65,7 @@ function TaskCard({ task, onUpdate, onPatch, onDelete, canDrag }: Props) {
   const [dueDate, setDueDate] = useState(task.dueDate ?? '')
   const cardRef = useRef<HTMLDivElement>(null)
 
-  // ドラッグ＆ドロップ：このカードを「つかめる」ようにする。編集中と検索中（canDrag が false）はつかめない
+  // ドラッグ＆ドロップ：このカードを「つかめる」ようにする。編集中と検索・絞り込み中（canDrag が false）はつかめない
   // setNodeRef：どの要素がカードかを dnd-kit に教える
   // attributes・listeners：マウスやキーボードでつかむための仕掛け。カードの要素に付ける
   // transform・transition：ドラッグ中にカードをどれだけ動かして見せるか

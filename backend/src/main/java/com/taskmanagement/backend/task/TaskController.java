@@ -30,9 +30,15 @@ public class TaskController {
     // 返事はすべて TaskResponse（返事専用の型）にして返す。エンティティ Task はそのまま返さない
     // タスクが見つからないときは TaskNotFoundException を投げる。404 の返事は GlobalExceptionHandler が作る
 
+    // 例：GET /api/tasks?keyword=買い&priority=high&priority=medium&due=overdue
+    // どれも省略できる。priority は何度でも書ける（書いた優先度のどれか）
+    // priority・due の小文字を enum に変えるのは QueryParamConverters。決まっていない値なら 400 を返す
     @GetMapping
-    public List<TaskResponse> getAllTasks(@RequestParam(required = false) String keyword) {
-        return taskService.findTasks(keyword).stream()
+    public List<TaskResponse> getAllTasks(
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) List<TaskPriority> priority,
+            @RequestParam(required = false) DueFilter due) {
+        return taskService.findTasks(keyword, priority, due).stream()
                 .map(TaskResponse::from)
                 .toList();
     }

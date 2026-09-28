@@ -130,7 +130,7 @@ function Board({ tasks, onAdd, onUpdate, onPatch, onDelete, onMove, onSort, canD
       onDragEnd={handleDragEnd}
       onDragCancel={handleDragCancel}
     >
-      {!canDrag && <p className="mb-3 text-sm text-red-600">検索中は、カードの並び替えはできません。</p>}
+      {!canDrag && <p className="mb-3 text-sm text-red-600">検索・絞り込み中は、カードの並び替えはできません。</p>}
       <div className="flex items-start gap-4 overflow-x-auto">
         {columns.map((column) => (
           <Column

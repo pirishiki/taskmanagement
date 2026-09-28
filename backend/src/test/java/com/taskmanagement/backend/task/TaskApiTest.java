@@ -13,6 +13,8 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.assertj.MockMvcTester;
 import org.springframework.test.web.servlet.assertj.MvcTestResult;
 
+import java.time.LocalDate;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 // タスクの API（/api/tasks）のテスト
@@ -119,6 +121,87 @@ class TaskApiTest {
         assertThat(taskRepository.existsById(task.getId())).isFalse();
     }
 
+    // ここから下は、絞り込み（GET /api/tasks の keyword・priority・due）のテスト
+
+    // 絞り込みのテスト用に、「やるべきこと」の列にタスクを1件作る
+    private void saveTask(String text, TaskPriority priority, LocalDate dueDate) {
+        taskRepository.save(new Task(text, TaskStatus.TODO, priority, dueDate, 0));
+    }
+
+    @Test
+    @DisplayName("priority を2つ書くと、そのどちらかの優先度のタスクだけが返る")
+    void filterByPriorities() {
+        // 準備：高・中・低を1件ずつ
+        saveTask("高のタスク", TaskPriority.HIGH, null);
+        saveTask("中のタスク", TaskPriority.MEDIUM, null);
+        saveTask("低のタスク", TaskPriority.LOW, null);
+
+        // 実行：高と低で絞る
+        MvcTestResult result = mvc.get().uri("/api/tasks")
+                .param("priority", "high", "low")
+                .exchange();
+
+        // 確かめる：中は返らない
+        assertThat(result).hasStatus(HttpStatus.OK);
+        assertThat(result).bodyJson().extractingPath("$[*].text").asArray()
+                .containsExactlyInAnyOrder("高のタスク", "低のタスク");
+    }
+
+    @Test
+    @DisplayName("due は、overdue なら今日より前、week なら今日〜今日＋6日、none なら期限なしのタスクだけが返る")
+    void filterByDue() {
+        // 準備：境目の日付を1件ずつ（今日より前、今日、今日＋6日、今日＋7日、期限なし）
+        LocalDate today = LocalDate.now();
+        saveTask("昨日まで", TaskPriority.MEDIUM, today.minusDays(1));
+        saveTask("今日まで", TaskPriority.MEDIUM, today);
+        saveTask("6日後まで", TaskPriority.MEDIUM, today.plusDays(6));
+        saveTask("7日後まで", TaskPriority.MEDIUM, today.plusDays(7));
+        saveTask("期限なし", TaskPriority.MEDIUM, null);
+
+        // 実行と確かめる：今日は「期限切れ」に入らない。今日＋6日は「7日以内」に入り、今日＋7日は入らない
+        assertThat(mvc.get().uri("/api/tasks").param("due", "overdue"))
+                .bodyJson().extractingPath("$[*].text").asArray()
+                .containsExactlyInAnyOrder("昨日まで");
+        assertThat(mvc.get().uri("/api/tasks").param("due", "week"))
+                .bodyJson().extractingPath("$[*].text").asArray()
+                .containsExactlyInAnyOrder("今日まで", "6日後まで");
+        assertThat(mvc.get().uri("/api/tasks").param("due", "none"))
+                .bodyJson().extractingPath("$[*].text").asArray()
+                .containsExactlyInAnyOrder("期限なし");
+    }
+
+    @Test
+    @DisplayName("keyword と priority を一緒に書くと、両方を満たすタスクだけが返る（AND）")
+    void filterByKeywordAndPriority() {
+        // 準備：キーワードだけ合う、優先度だけ合う、両方合う、の3件
+        saveTask("牛乳を買う", TaskPriority.LOW, null);
+        saveTask("パンを買う", TaskPriority.HIGH, null);
+        saveTask("牛乳を飲む", TaskPriority.HIGH, null);
+
+        // 実行：「牛乳」を含み、かつ高
+        MvcTestResult result = mvc.get().uri("/api/tasks")
+                .param("keyword", "牛乳")
+                .param("priority", "high")
+                .exchange();
+
+        // 確かめる：片方だけ合うタスクは返らない（足し算の OR なら3件返ってしまう）
+        assertThat(result).bodyJson().extractingPath("$[*].text").asArray()
+                .containsExactlyInAnyOrder("牛乳を飲む");
+    }
+
+    @Test
+    @DisplayName("keyword の % は、「何でもよい文字」ではなく、ただの文字として探す")
+    void keywordTreatsPercentAsPlainText() {
+        // 準備：「100%」を含むタスクと、含まないタスク
+        saveTask("売上100%達成", TaskPriority.MEDIUM, null);
+        saveTask("100円のパンを買う", TaskPriority.MEDIUM, null);
+
+        // 実行と確かめる：% が「何でもよい」なら両方返ってしまう
+        assertThat(mvc.get().uri("/api/tasks").param("keyword", "100%"))
+                .bodyJson().extractingPath("$[*].text").asArray()
+                .containsExactlyInAnyOrder("売上100%達成");
+    }
+
     // ここから下は、エラーのテスト。返事はどれも ProblemDetail（application/problem+json）になる
 
     @Test
@@ -165,6 +248,18 @@ class TaskApiTest {
         assertThat(result).hasStatus(HttpStatus.BAD_REQUEST);
         assertThat(result).hasContentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON);
         assertThat(taskRepository.count()).isZero();
+    }
+
+    @Test
+    @DisplayName("絞り込みの priority・due に決まっていない値（urgent・someday）を書くと 400 になる")
+    void filterWithUnknownValueIsBadRequest() {
+        MvcTestResult unknownPriority = mvc.get().uri("/api/tasks").param("priority", "urgent").exchange();
+        assertThat(unknownPriority).hasStatus(HttpStatus.BAD_REQUEST);
+        assertThat(unknownPriority).hasContentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON);
+
+        MvcTestResult unknownDue = mvc.get().uri("/api/tasks").param("due", "someday").exchange();
+        assertThat(unknownDue).hasStatus(HttpStatus.BAD_REQUEST);
+        assertThat(unknownDue).hasContentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON);
     }
 
     @Test

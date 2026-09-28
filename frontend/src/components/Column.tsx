@@ -32,7 +32,7 @@ function Column({ title, status, tasks, onAdd, onUpdate, onPatch, onDelete, onSo
       <div className="mb-3 flex items-center justify-between gap-2">
         <h2 className="font-bold text-gray-700">{title}</h2>
         {/* 並び替えセレクト：選んだ時点で一度だけ並べ直す。value はいつも ''（「並び替え」）なので、選んだあとは表示が元に戻る */}
-        {/* 検索中は、見えていないタスクと並び順がずれるのを防ぐため、ドラッグと同じく使えなくする */}
+        {/* 検索・絞り込み中は、見えていないタスクと並び順がずれるのを防ぐため、ドラッグと同じく使えなくする */}
         <select
           value=""
           onChange={(event) => {
@@ -43,7 +43,7 @@ function Column({ title, status, tasks, onAdd, onUpdate, onPatch, onDelete, onSo
             }
           }}
           disabled={!canDrag}
-          title={canDrag ? undefined : '検索中は並び替えできません'}
+          title={canDrag ? undefined : '検索・絞り込み中は並び替えできません'}
           className="rounded bg-white px-1 py-0.5 text-xs text-gray-600 disabled:opacity-50"
         >
           <option value="" disabled>
