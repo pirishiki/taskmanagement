@@ -1,4 +1,4 @@
-import type { NewTask, Task, TaskPatch } from '../types/task'
+import type { NewTask, Task, TaskFilters, TaskPatch } from '../types/task'
 
 // エラーの返事（ProblemDetail）の中身。バックエンドの GlobalExceptionHandler が作る
 // errors は、入力チェック違反のときだけ入る（項目名 → メッセージ）
@@ -47,11 +47,17 @@ async function request(url: string, init?: RequestInit): Promise<Response> {
 // JSON を送るときの共通の設定
 const jsonHeaders = { 'Content-Type': 'application/json' }
 
-// タスクを取得する。keyword を渡すと、タスク名にそれを含むものだけが返る
-export async function fetchTasks(keyword?: string): Promise<Task[]> {
+// タスクを取得する。filters を渡すと、その条件を全部満たすものだけが返る（渡さなければ全件）
+// 例：{ keyword: '', priorities: ['high', 'medium'], due: 'overdue' } → /api/tasks?priority=high&priority=medium&due=overdue
+export async function fetchTasks(filters?: TaskFilters): Promise<Task[]> {
   const params = new URLSearchParams()
-  if (keyword) {
-    params.set('keyword', keyword)
+  if (filters?.keyword) {
+    params.set('keyword', filters.keyword)
+  }
+  // priority は、選ばれた優先度の数だけ書く（set は上書き、append は後ろに足す）
+  filters?.priorities.forEach((priority) => params.append('priority', priority))
+  if (filters?.due) {
+    params.set('due', filters.due)
   }
   const response = await request(`/api/tasks?${params}`)
   return response.json()

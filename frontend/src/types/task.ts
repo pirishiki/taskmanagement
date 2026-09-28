@@ -25,3 +25,18 @@ export type TaskPatch = Partial<NewTask>
 
 // 列の並び替えセレクトで選べる基準（'priority'：優先度順、'dueDate'：期限が近い順）
 export type SortCriterion = 'priority' | 'dueDate'
+
+// 期限での絞り込み（'overdue'：期限切れ、'week'：7日以内、'none'：期限なし、''：期限で絞らない）
+// バックエンドの DueFilter.java に対応する
+export type DueFilter = 'overdue' | 'week' | 'none' | ''
+
+// タスクを取るとき（GET /api/tasks）の絞り込みの条件。全部を満たすタスクだけが返る（AND）
+// keyword が ''、priorities が []、due が '' のときは、その条件では絞らない
+export type TaskFilters = {
+  keyword: string
+  priorities: Task['priority'][]
+  due: DueFilter
+}
+
+// 何も絞り込んでいないときの条件（最初の表示と、「検索を解除」を押したとき）
+export const noFilters: TaskFilters = { keyword: '', priorities: [], due: '' }

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { ApiError, createTask, deleteTask, fetchTasks, patchTask, reorderTasks, updateTask } from './api/taskApi'
 import Board from './components/Board'
 import SearchBar from './components/SearchBar'
-import type { NewTask, SortCriterion, Task, TaskPatch } from './types/task'
+import { noFilters, type NewTask, type SortCriterion, type Task, type TaskFilters, type TaskPatch } from './types/task'
 
 // 優先度順に並べるときの順位（数字が小さいほど上に来る）
 const priorityRank: Record<Task['priority'], number> = {
@@ -38,8 +38,10 @@ function App() {
   const [tasks, setTasks] = useState<Task[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  // 最後に検索したキーワード。空でなければ、一部のタスクだけを表示している（検索中）
-  const [searchKeyword, setSearchKeyword] = useState('')
+  // 最後に検索したときの条件（キーワード・優先度・期限）
+  const [filters, setFilters] = useState<TaskFilters>(noFilters)
+  // 条件が1つでも選ばれていれば、一部のタスクだけを表示している（検索・絞り込み中）
+  const isFiltering = filters.keyword !== '' || filters.priorities.length > 0 || filters.due !== ''
 
   // 最後に頼んだ取得の番号。返事が届いたとき、この番号と同じものだけを画面に使う
   // （検索を続けて押したとき、先に頼んだ古い結果があとから届いて、新しい結果を上書きしないようにするため）
@@ -48,12 +50,13 @@ function App() {
   // タスクを取ってきて、届いたら画面のメモ（tasks）を書き換える
   // 成功しても、エラーのメッセージは消さない（並び替えの失敗のあとで取り直したとき、失敗のメッセージを残すため）
   // useCallback：画面を描き直しても、同じ関数のまま使い回す（useEffect の依存に書いても、毎回動き直さないようにするため）
-  const loadTasks = useCallback((keyword?: string) => {
+  // filters を渡さなければ、全件を取る
+  const loadTasks = useCallback((filters?: TaskFilters) => {
     latestRequest.current += 1
     const requestId = latestRequest.current
     const isLatest = () => requestId === latestRequest.current
 
-    fetchTasks(keyword)
+    fetchTasks(filters)
       .then((result) => {
         if (!isLatest()) {
           return // もっと新しい取得を頼んであるので、この古い結果は捨てる
@@ -74,13 +77,13 @@ function App() {
       })
   }, [])
 
-  // 検索ボタンか Enter キーで呼ばれる
+  // 検索ボタンか Enter キーで呼ばれる（「検索を解除」のときは、何も選ばれていない条件が来る）
   // 前のエラーのメッセージは、ここで消す（取り直しに失敗すれば、loadTasks がまた出す）
-  function handleSearch(keyword: string) {
+  function handleSearch(nextFilters: TaskFilters) {
     setError(null)
     setLoading(true)
-    setSearchKeyword(keyword)
-    loadTasks(keyword)
+    setFilters(nextFilters)
+    loadTasks(nextFilters)
   }
 
   // 列のフォームで「追加」が押されたときに呼ばれる
@@ -228,7 +231,7 @@ function App() {
         スマートフォンでは閲覧のみ可能です。タスクの追加・削除・移動はPCで行ってください
       </p>
       <h1 className="mb-6 text-3xl font-bold text-[#1c3d5a]">Task Board</h1>
-      <SearchBar onSearch={handleSearch} searching={searchKeyword !== ''} />
+      <SearchBar onSearch={handleSearch} searching={isFiltering} />
       {loading && <p className="mb-4 text-gray-600">読み込み中…</p>}
       {error && <p className="mb-4 text-red-600">{error}</p>}
       <Board
@@ -239,8 +242,8 @@ function App() {
         onDelete={handleDelete}
         onMove={handleMove}
         onSort={handleSort}
-        // 検索中は、見えていないタスクと並び順がずれるのを防ぐため、ドラッグできないようにする
-        canDrag={searchKeyword === ''}
+        // 検索・絞り込み中は、見えていないタスクと並び順がずれるのを防ぐため、ドラッグできないようにする
+        canDrag={!isFiltering}
       />
     </div>
   )
