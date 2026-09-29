@@ -14,6 +14,7 @@ import org.springframework.test.web.servlet.assertj.MockMvcTester;
 import org.springframework.test.web.servlet.assertj.MvcTestResult;
 
 import java.time.LocalDate;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -59,9 +60,9 @@ class TaskApiTest {
     @DisplayName("削除で並び順に隙間ができても、新しいタスクは列の一番下（最大値＋1）に入る")
     void newTaskGoesToBottomEvenAfterDelete() {
         // 準備：同じ列に 0・1・2 番の3件を作り、0 番を削除して、1・2 番だけが残る状態にする
-        Task first = taskRepository.save(new Task("1件目", TaskStatus.TODO, TaskPriority.MEDIUM, null, 0));
-        taskRepository.save(new Task("2件目", TaskStatus.TODO, TaskPriority.MEDIUM, null, 1));
-        taskRepository.save(new Task("3件目", TaskStatus.TODO, TaskPriority.MEDIUM, null, 2));
+        Task first = saveTask("1件目", TaskStatus.TODO, 0);
+        saveTask("2件目", TaskStatus.TODO, 1);
+        saveTask("3件目", TaskStatus.TODO, 2);
         assertThat(mvc.delete().uri("/api/tasks/{id}", first.getId())).hasStatus(HttpStatus.NO_CONTENT);
 
         // 実行：同じ列に新しいタスクを登録する
@@ -74,46 +75,151 @@ class TaskApiTest {
 
         // 確かめる：件数（2）ではなく、最大値（2）＋1 の 3 番になる（件数で決めていたころは 2 番になり、3件目と重なっていた）
         assertThat(result).hasStatus(HttpStatus.CREATED);
-        assertThat(result).bodyJson().extractingPath("$.sortOrder").isEqualTo(3);
+        assertThat(result).bodyJson().extractingPath("$.sortOrder").isEqualTo(3.0);
+    }
+
+    // ここから下は、並び替え（move・reorder）のテスト
+    // 絞り込み中を思い浮かべて、「画面に見えているカード」と「見えていないカード」を混ぜて準備する
+
+    // 並び替えのテスト用に、列（status）と番号（sortOrder）を決めてタスクを1件作る
+    private Task saveTask(String text, TaskStatus status, double sortOrder) {
+        return taskRepository.save(new Task(text, status, TaskPriority.MEDIUM, null, sortOrder));
+    }
+
+    // その列のタスク名を、上から順に並べて返す（DB の本当の並び）
+    private List<String> textsIn(TaskStatus status) {
+        return taskRepository.findByStatusOrderBySortOrderAsc(status).stream().map(Task::getText).toList();
+    }
+
+    // PUT /api/tasks/{id}/move を呼ぶ。prevId が null なら、列の一番上に入れる頼みになる
+    private MvcTestResult move(Long id, String status, Long prevId) {
+        return mvc.put().uri("/api/tasks/{id}/move", id)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"status": "%s", "prevId": %s}
+                        """.formatted(status, prevId))
+                .exchange();
     }
 
     @Test
-    @DisplayName("並び替えると、送った ID の順番どおりに 0・1・2 番が振り直され、列も移る")
-    void reorderRenumbersAndMovesColumn() {
-        // 準備：「やるべきこと」に2件、「進行中」に1件
-        Task todoA = taskRepository.save(new Task("A", TaskStatus.TODO, TaskPriority.MEDIUM, null, 0));
-        Task todoB = taskRepository.save(new Task("B", TaskStatus.TODO, TaskPriority.MEDIUM, null, 1));
-        Task doingC = taskRepository.save(new Task("C", TaskStatus.DOING, TaskPriority.MEDIUM, null, 0));
+    @DisplayName("move で A のすぐ下に入れると、見えていない B との真ん中の番号になり、ほかのカードの番号は変わらない")
+    void moveGoesBetweenPrevAndHiddenNext() {
+        // 準備：「やるべきこと」に A(0)・B(1)・C(2)。絞り込みで A と C だけが見えているとする
+        // 「進行中」の D を、画面で A のすぐ下に落とす
+        Task a = saveTask("A", TaskStatus.TODO, 0);
+        saveTask("B", TaskStatus.TODO, 1);
+        saveTask("C", TaskStatus.TODO, 2);
+        Task d = saveTask("D", TaskStatus.DOING, 0);
 
-        // 実行：「進行中」の列を C・B・A の順にする（B と A は「やるべきこと」から移ってくる）
+        MvcTestResult result = move(d.getId(), "todo", a.getId());
+
+        // 確かめる：D は A(0) と、DB で本当にすぐ下の B(1) の真ん中 0.5 に入る。見えていない B と C の順番はそのまま
+        assertThat(result).hasStatus(HttpStatus.OK);
+        assertThat(result).bodyJson().extractingPath("$.status").isEqualTo("todo");
+        assertThat(result).bodyJson().extractingPath("$.sortOrder").isEqualTo(0.5);
+        assertThat(textsIn(TaskStatus.TODO)).containsExactly("A", "D", "B", "C");
+    }
+
+    @Test
+    @DisplayName("move で prevId を省くと列の一番上、一番下のカードを prevId にすると列の一番下に入る")
+    void moveToTopAndBottom() {
+        // 準備：A(0)・B(1)・C(2)
+        saveTask("A", TaskStatus.TODO, 0);
+        Task b = saveTask("B", TaskStatus.TODO, 1);
+        Task c = saveTask("C", TaskStatus.TODO, 2);
+
+        // 実行と確かめる：C を一番上へ（一番上の A より 1 小さい -1）
+        assertThat(move(c.getId(), "todo", null)).bodyJson().extractingPath("$.sortOrder").isEqualTo(-1.0);
+        assertThat(textsIn(TaskStatus.TODO)).containsExactly("C", "A", "B");
+
+        // 実行と確かめる：C を B（一番下）のすぐ下へ（B より 1 大きい 2）
+        assertThat(move(c.getId(), "todo", b.getId())).bodyJson().extractingPath("$.sortOrder").isEqualTo(2.0);
+        assertThat(textsIn(TaskStatus.TODO)).containsExactly("A", "B", "C");
+    }
+
+    @Test
+    @DisplayName("move で番号のすき間がなくなっていたら、列を 0・1・2… と振り直してから真ん中に入れる")
+    void moveRenumbersWhenNoGapIsLeft() {
+        // 準備：A と B の番号を、間に小数を作れないほど近くする（Math.nextUp(1.0) は「1 のすぐ次の小数」）
+        Task a = saveTask("A", TaskStatus.TODO, 1);
+        saveTask("B", TaskStatus.TODO, Math.nextUp(1.0));
+        Task d = saveTask("D", TaskStatus.DOING, 0);
+
+        MvcTestResult result = move(d.getId(), "todo", a.getId());
+
+        // 確かめる：A=0・B=1 に振り直されたあと、D はその真ん中の 0.5 に入る
+        assertThat(result).bodyJson().extractingPath("$.sortOrder").isEqualTo(0.5);
+        assertThat(textsIn(TaskStatus.TODO)).containsExactly("A", "D", "B");
+    }
+
+    @Test
+    @DisplayName("move で、動かすカードか prevId のカードがなければ 404、prevId が別の列にあれば 400 になる")
+    void moveWithWrongIdsIsError() {
+        Task a = saveTask("A", TaskStatus.TODO, 0);
+        Task b = saveTask("B", TaskStatus.DOING, 0);
+        Task gone = saveTask("消すタスク", TaskStatus.TODO, 1);
+        taskRepository.delete(gone);
+
+        assertThat(move(gone.getId(), "todo", a.getId())).hasStatus(HttpStatus.NOT_FOUND);
+        assertThat(move(b.getId(), "todo", gone.getId())).hasStatus(HttpStatus.NOT_FOUND);
+
+        MvcTestResult otherColumn = move(b.getId(), "done", a.getId()); // A は「やるべきこと」にある
+        assertThat(otherColumn).hasStatus(HttpStatus.BAD_REQUEST);
+        assertThat(otherColumn).hasContentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON);
+        assertThat(otherColumn).bodyJson().extractingPath("$.detail").isEqualTo("上のカード（prevId）が、移動先の列にありません");
+    }
+
+    @Test
+    @DisplayName("reorder は、送ったカードどうしで席（番号）を入れ替え、送らなかったカードの番号は変えない")
+    void reorderSwapsSeatsOfSentTasksOnly() {
+        // 準備：A(0)・B(1)・C(2)・D(3)。絞り込みで B と D だけが見えているとする
+        saveTask("A", TaskStatus.TODO, 0);
+        Task b = saveTask("B", TaskStatus.TODO, 1);
+        saveTask("C", TaskStatus.TODO, 2);
+        Task d = saveTask("D", TaskStatus.TODO, 3);
+
+        // 実行：見えている2枚を D・B の順にする
         MvcTestResult result = mvc.put().uri("/api/tasks/reorder")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
-                        {"status": "doing", "orderedIds": [%d, %d, %d]}
-                        """.formatted(doingC.getId(), todoB.getId(), todoA.getId()))
+                        {"status": "todo", "orderedIds": [%d, %d]}
+                        """.formatted(d.getId(), b.getId()))
                 .exchange();
 
-        // 確かめる：204 が返り、DB の中で3件とも「進行中」になって、C・B・A の順に 0・1・2 番になっている
+        // 確かめる：B と D が座っていた席（1 と 3）を D・B の順に使う。A(0) と C(2) はそのまま
         assertThat(result).hasStatus(HttpStatus.NO_CONTENT);
-        assertThat(taskRepository.findById(doingC.getId())).get()
+        assertThat(taskRepository.findById(d.getId())).get()
+                .satisfies(task -> assertThat(task.getSortOrder()).isEqualTo(1.0));
+        assertThat(taskRepository.findById(b.getId())).get()
+                .satisfies(task -> assertThat(task.getSortOrder()).isEqualTo(3.0));
+        assertThat(textsIn(TaskStatus.TODO)).containsExactly("A", "D", "C", "B");
+    }
+
+    @Test
+    @DisplayName("reorder に別の列のカードが混じっていると 400 になり、どのカードの番号も変わらない")
+    void reorderWithOtherColumnIsBadRequest() {
+        Task a = saveTask("A", TaskStatus.TODO, 0);
+        Task b = saveTask("B", TaskStatus.DOING, 5);
+
+        MvcTestResult result = mvc.put().uri("/api/tasks/reorder")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"status": "todo", "orderedIds": [%d, %d]}
+                        """.formatted(b.getId(), a.getId()))
+                .exchange();
+
+        assertThat(result).hasStatus(HttpStatus.BAD_REQUEST);
+        assertThat(taskRepository.findById(a.getId())).get()
                 .satisfies(task -> assertThat(task.getSortOrder()).isZero());
-        assertThat(taskRepository.findById(todoB.getId())).get()
-                .satisfies(task -> {
-                    assertThat(task.getStatus()).isEqualTo(TaskStatus.DOING);
-                    assertThat(task.getSortOrder()).isEqualTo(1);
-                });
-        assertThat(taskRepository.findById(todoA.getId())).get()
-                .satisfies(task -> {
-                    assertThat(task.getStatus()).isEqualTo(TaskStatus.DOING);
-                    assertThat(task.getSortOrder()).isEqualTo(2);
-                });
+        assertThat(taskRepository.findById(b.getId())).get()
+                .satisfies(task -> assertThat(task.getStatus()).isEqualTo(TaskStatus.DOING));
     }
 
     @Test
     @DisplayName("削除すると 204 が返り、そのあと取得しようとすると 404 になる")
     void deleteThenNotFound() {
         // 準備
-        Task task = taskRepository.save(new Task("消すタスク", TaskStatus.TODO, TaskPriority.LOW, null, 0));
+        Task task = saveTask("消すタスク", TaskStatus.TODO, 0);
 
         // 実行と確かめる：削除は 204、同じ id を取得すると 404
         assertThat(mvc.delete().uri("/api/tasks/{id}", task.getId())).hasStatus(HttpStatus.NO_CONTENT);
@@ -125,7 +231,7 @@ class TaskApiTest {
 
     // 絞り込みのテスト用に、「やるべきこと」の列にタスクを1件作る
     private void saveTask(String text, TaskPriority priority, LocalDate dueDate) {
-        taskRepository.save(new Task(text, TaskStatus.TODO, priority, dueDate, 0));
+        taskRepository.save(new Task(text, TaskStatus.TODO, priority, dueDate, 0.0));
     }
 
     @Test
@@ -280,7 +386,7 @@ class TaskApiTest {
     @DisplayName("存在しない id を書き換えようとすると 404 になり、detail に理由が入る")
     void updateUnknownIdIsNotFound() {
         // 準備：一度作って消した id を使う（その id のタスクは確実に存在しない）
-        Task task = taskRepository.save(new Task("消すタスク", TaskStatus.TODO, TaskPriority.LOW, null, 0));
+        Task task = saveTask("消すタスク", TaskStatus.TODO, 0);
         taskRepository.delete(task);
 
         MvcTestResult result = mvc.put().uri("/api/tasks/{id}", task.getId())

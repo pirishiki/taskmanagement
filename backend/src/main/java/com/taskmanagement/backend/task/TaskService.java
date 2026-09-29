@@ -1,13 +1,16 @@
 package com.taskmanagement.backend.task;
 
 import org.springframework.data.domain.Sort;
+import org.springframework.http.HttpStatus;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -100,29 +103,112 @@ public class TaskService {
         return true;
     }
 
-    // ドラッグ＆ドロップ用：1つの列（status）の並び順を、送られてきた ID の順番どおりにまとめて書き換える
-    // 別の列から移ってきたタスクも、ここで status が書き換わる
+    // ドラッグ＆ドロップ用：カード（id）を、移動先の列（status）の、prevId のカードのすぐ下に入れる
+    // 番号を変えるのは、動かしたカードだけ。ほかのカードには触らないので、画面に見えていないカードの順番もずれない
+    // 動かすカードや prevId のカードがなければ 404、prevId が移動先の列にないなどのおかしな頼みなら 400
+    public Task move(Long id, MoveRequest request) {
+        Task task = taskRepository.findById(id).orElseThrow(() -> new TaskNotFoundException(id));
+        TaskStatus status = request.status();
+
+        Task prev = null; // null のままなら、列の一番上に入れる
+        if (request.prevId() != null) {
+            if (request.prevId().equals(id)) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "動かすカード自身を、上のカード（prevId）にはできません");
+            }
+            prev = taskRepository.findById(request.prevId())
+                    .orElseThrow(() -> new TaskNotFoundException(request.prevId()));
+            if (prev.getStatus() != status) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "上のカード（prevId）が、移動先の列にありません");
+            }
+        }
+
+        // 番号のすき間がなくなっていたら、列を 0, 1, 2… と振り直してから、もう一度決める
+        Optional<Double> sortOrder = orderBelow(prev, status, id);
+        if (sortOrder.isEmpty()) {
+            renumber(status);
+            sortOrder = orderBelow(prev, status, id);
+        }
+
+        task.setStatus(status);
+        task.setSortOrder(sortOrder.orElseThrow());
+        return taskRepository.save(task);
+    }
+
+    // prev のすぐ下に入れるときの番号を決める（prev が null なら列の一番上）。すき間がなければ空の Optional
+    // 動かしているカード自身（movingId）は、まだ元の位置にあるので、隣を探すときに数えない
+    private Optional<Double> orderBelow(Task prev, TaskStatus status, Long movingId) {
+        if (prev == null) {
+            // 一番上のカードより 1 小さくする（列が空なら 0）
+            return Optional.of(taskRepository.findFirstByStatusAndIdNotOrderBySortOrderAsc(status, movingId)
+                    .map(first -> first.getSortOrder() - 1)
+                    .orElse(0.0));
+        }
+
+        // DB で本当に prev のすぐ下にあるカード（画面に見えていなくても）を探す
+        Optional<Task> next = taskRepository.findFirstByStatusAndSortOrderGreaterThanAndIdNotOrderBySortOrderAsc(
+                status, prev.getSortOrder(), movingId);
+        if (next.isEmpty()) {
+            return Optional.of(prev.getSortOrder() + 1); // prev が一番下なら、その下に入れる
+        }
+
+        // prev とすぐ下のカードの真ん中。すき間が狭すぎると、真ん中がどちらかと同じ数になってしまう
+        double middle = (prev.getSortOrder() + next.get().getSortOrder()) / 2;
+        if (middle == prev.getSortOrder() || middle == next.get().getSortOrder()) {
+            return Optional.empty();
+        }
+        return Optional.of(middle);
+    }
+
+    // 列の番号を、今の順番のまま上から 0, 1, 2… と振り直す（真ん中の番号を作るすき間を、また空けるため）
+    private void renumber(TaskStatus status) {
+        List<Task> column = taskRepository.findByStatusOrderBySortOrderAsc(status);
+        for (int position = 0; position < column.size(); position++) {
+            column.get(position).setSortOrder((double) position);
+        }
+        taskRepository.saveAll(column);
+    }
+
+    // 自動並び替え（優先度順・期限が近い順）用：1つの列（status）の中で、送られてきたカードの順番を並べ替える
+    // 「席の入れ替え」で行う：送られてきたカードが今持っている番号（席）を小さい順に並べ、送られてきた順番に配り直す
+    // 送られてこなかったカード（絞り込みで画面に見えていないカード）の番号には触らないので、その順番はずれない
+    // 列を移すことはしない（それは move の仕事）。別の列のカードが混じっていたら 400
     public void reorder(ReorderRequest request) {
         // 取ってきたタスクを「ID → タスク」の表（Map）にしておくと、ID からすぐに引ける
         Map<Long, Task> tasksById = taskRepository.findAllById(request.orderedIds()).stream()
                 .collect(Collectors.toMap(Task::getId, Function.identity()));
 
-        for (int position = 0; position < request.orderedIds().size(); position++) {
-            Task task = tasksById.get(request.orderedIds().get(position));
-            if (task != null) { // 送られてきた ID のタスクがもう消えていたら、飛ばす
-                task.setStatus(request.status());
-                task.setSortOrder(position);
+        for (Task task : tasksById.values()) {
+            if (task.getStatus() != request.status()) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "id が " + task.getId() + " のタスクは、並べ替える列（status）にありません");
             }
         }
 
-        taskRepository.saveAll(tasksById.values());
+        // 送られてきたカードが今座っている席（番号）を、小さい順に並べる
+        List<Double> seats = tasksById.values().stream()
+                .map(Task::getSortOrder)
+                .sorted()
+                .toList();
+
+        // 送られてきた順番に、上の席から座ってもらう
+        // 送られてきた ID のタスクがもう消えていたら飛ばす。同じ ID が2回あったら、2回目は飛ばす（distinct）
+        List<Task> ordered = request.orderedIds().stream()
+                .distinct()
+                .map(tasksById::get)
+                .filter(Objects::nonNull)
+                .toList();
+        for (int seat = 0; seat < ordered.size(); seat++) {
+            ordered.get(seat).setSortOrder(seats.get(seat));
+        }
+
+        taskRepository.saveAll(ordered);
     }
 
     // 同じ列で一番大きい並び順より1つ大きくすると、列の一番下に入る（列が空なら 0）
     // 件数ではなく最大値を使うのは、削除で並び順に隙間ができても、ほかのタスクと同じ番号にならないようにするため
-    private int nextOrderIn(TaskStatus status) {
+    private double nextOrderIn(TaskStatus status) {
         return taskRepository.findTopByStatusOrderBySortOrderDesc(status)
                 .map(last -> last.getSortOrder() + 1)
-                .orElse(0);
+                .orElse(0.0);
     }
 }

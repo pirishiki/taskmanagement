@@ -11,7 +11,7 @@ public record TaskResponse(
         TaskStatus status,
         TaskPriority priority,
         LocalDate dueDate,
-        Integer sortOrder) {
+        Double sortOrder) {
 
     // エンティティ Task から、返事用の TaskResponse を作る
     public static TaskResponse from(Task task) {
