@@ -106,7 +106,20 @@ export async function deleteTask(id: number): Promise<void> {
   }
 }
 
-// 1つの列の並び順を、orderedIds の順番どおりにする。返ってくる中身はない（204）
+// ドラッグ＆ドロップ用：カード（id）を、status の列の、prevId のカードのすぐ下に入れる
+// prevId は、落とした位置のすぐ上に見えているカードの ID。一番上に落としたときは null
+// 番号はサーバーが決める（見えていないカードも含めて、上のカードとすぐ下のカードの真ん中）。動かしたあとのタスクが返る
+export async function moveTask(id: number, status: Task['status'], prevId: number | null): Promise<Task> {
+  const response = await request(`/api/tasks/${id}/move`, {
+    method: 'PUT',
+    headers: jsonHeaders,
+    body: JSON.stringify({ status, prevId }),
+  })
+  return response.json()
+}
+
+// 自動並び替え（優先度順・期限が近い順）用：1つの列の中で、orderedIds のカードどうしの席（番号）を入れ替える
+// 送らなかったカード（絞り込みで見えていないカード）の番号は変わらない。返ってくる中身はない（204）
 export async function reorderTasks(status: Task['status'], orderedIds: number[]): Promise<void> {
   await request('/api/tasks/reorder', {
     method: 'PUT',

@@ -32,7 +32,6 @@ type Props = {
   onDelete: (id: number) => void
   onMove: (taskId: number, toStatus: Task['status'], toIndex: number) => void
   onSort: (status: Task['status'], criterion: SortCriterion) => void
-  canDrag: boolean
 }
 
 // その列のタスクだけを取り出し、並び順（sortOrder）の小さい順に並べる
@@ -41,7 +40,7 @@ function tasksIn(tasks: Task[], status: Task['status']) {
   return tasks.filter((task) => task.status === status).sort((a, b) => a.sortOrder - b.sortOrder)
 }
 
-function Board({ tasks, onAdd, onUpdate, onPatch, onDelete, onMove, onSort, canDrag }: Props) {
+function Board({ tasks, onAdd, onUpdate, onPatch, onDelete, onMove, onSort }: Props) {
   // ドラッグ中だけ使う「仮のタスク一覧」。別の列の上に来たら、ここでカードを仮に移す
   // （移動先の列のカードが場所を空けて、どこに入るかが見えるようにするため）
   // null のときはドラッグしていないので、本物の tasks をそのまま表示する
@@ -85,9 +84,17 @@ function Board({ tasks, onAdd, onUpdate, onPatch, onDelete, onMove, onSort, canD
       if (!moving || !toStatus || moving.status === toStatus) {
         return list // 同じ列の中の入れ替えは、dnd-kit がカードをずらして見せてくれる
       }
-      // カードの上なら、そのカードのすぐ上に入れる（sortOrder を 0.5 小さくする）。列の空いた所なら、一番下に入れる
-      const overTask = list.find((task) => task.id === over.id)
-      const sortOrder = overTask ? overTask.sortOrder - 0.5 : Number.MAX_SAFE_INTEGER
+      // カードの上なら、そのカードとすぐ上のカードの真ん中の番号にして、そのカードのすぐ上に入れる
+      // （番号は小数なので、カードどうしの差が 1 より小さいこともある。決まった数を引くと、別のカードを追い越してしまう）
+      // 列の空いた所なら、一番下に入れる
+      const column = tasksIn(list, toStatus)
+      const overIndex = column.findIndex((task) => task.id === over.id)
+      let sortOrder = Number.MAX_SAFE_INTEGER
+      if (overIndex >= 0) {
+        const overTask = column[overIndex]
+        const aboveTask = column[overIndex - 1]
+        sortOrder = aboveTask ? (aboveTask.sortOrder + overTask.sortOrder) / 2 : overTask.sortOrder - 1
+      }
       return list.map((task) => (task.id === moving.id ? { ...task, status: toStatus, sortOrder } : task))
     })
   }
@@ -130,7 +137,6 @@ function Board({ tasks, onAdd, onUpdate, onPatch, onDelete, onMove, onSort, canD
       onDragEnd={handleDragEnd}
       onDragCancel={handleDragCancel}
     >
-      {!canDrag && <p className="mb-3 text-sm text-red-600">検索・絞り込み中は、カードの並び替えはできません。</p>}
       <div className="flex items-start gap-4 overflow-x-auto">
         {columns.map((column) => (
           <Column
@@ -143,7 +149,6 @@ function Board({ tasks, onAdd, onUpdate, onPatch, onDelete, onMove, onSort, canD
             onPatch={onPatch}
             onDelete={onDelete}
             onSort={onSort}
-            canDrag={canDrag}
           />
         ))}
       </div>
