@@ -37,8 +37,8 @@
      - 失敗（❌）したら、表示されたエラーを直してプッシュし直す。チェックはもう一度自動で動く。
      - プッシュする前に、手元でも同じチェックを動かせる。`frontend` で `npm run lint` と `npm run build`、`backend` で `./gradlew check`（コンパイル・PMD・Checkstyle・テスト。テストは Testcontainers が Docker で DB を用意するので、Docker Desktop を起動しておく）。
      - チェックの中身は `.github/workflows/ci.yml` にある。ジョブの名前を変えるときは、`protect-master` の必須チェックの名前も一緒に変える。変えないと、来ないチェックを待ち続けて、どの PR もマージできなくなる。
-   - **マージはユーザーの確認を取ってから行う。** 勝手にマージしない。
-   - マージ後は `git switch master` → `git pull` で最新化する。
+   - **マージはユーザーが GitHub の画面で行う。** Claude Code からは `gh pr merge` が禁止されていて（`~/.claude/settings.json` の permissions.deny）、マージできない。
+   - マージのあとの流れ：ユーザーが「マージした」と伝える → Claude が `git switch master` → `git pull` で最新化する。
 
 ## 教え方のルール
 
