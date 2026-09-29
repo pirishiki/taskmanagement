@@ -13,14 +13,15 @@ Javaとspringbootを使えると企業が採用しやすい。データにもあ
 
 | 区分 | 技術 | バージョン |
 | --- | --- | --- |
-| 実行環境 | Node.js | 24.19.0（LTS） |
-| フレームワーク | React | 19.3.0 |
+| 実行環境 | Node.js | 24.21.0（LTS） |
+| フレームワーク | React（画面を作る `react`・ブラウザに表示する `react-dom`） | 19.3.0 |
 | 言語 | TypeScript | 6.0.3 |
 | ビルドツール | Vite | 8.3.0 |
-| パッケージ管理 | npm | 11.17.0 |
+| ビルドツールの部品 | @vitejs/plugin-react（Vite で React を動かす） | 6.1.1 |
+| パッケージ管理 | npm | 11.19.0 |
 | ドラッグ＆ドロップ | dnd-kit（@dnd-kit/core・@dnd-kit/sortable） | 6.3.1・10.0.0 |
-| スタイリング | Tailwind CSS | 4.3.3 |
-| 静的解析 | oxlint | 1.85 |
+| スタイリング | Tailwind CSS（`tailwindcss`・Vite で使うための `@tailwindcss/vite`） | 4.3.3 |
+| 静的解析 | oxlint | 1.85.0 |
 
 ### バックエンド（`backend/`）
 
@@ -29,6 +30,7 @@ Javaとspringbootを使えると企業が採用しやすい。データにもあ
 | 言語 | Java | 21（Eclipse Temurin 21.0.12.1、LTS） |
 | フレームワーク | Spring Boot | 4.1.1 |
 | ビルドツール | Gradle | 9.7.1（`gradlew`ラッパー経由） |
+| ビルドツールの部品 | io.spring.dependency-management（Spring Boot が決めた組み合わせで部品を取り寄せる Gradle のプラグイン。`build.gradle` で直接指定） | 1.1.7 |
 | API形式 | REST API | - |
 | 静的解析 | PMD（Gradle の `pmd` プラグイン、規則は quickstart） | 7.24.0 |
 | 書き方のチェック | Checkstyle（Gradle の `checkstyle` プラグイン、規則は `config/checkstyle/checkstyle.xml`） | 14.1.0 |
@@ -42,12 +44,16 @@ Javaとspringbootを使えると企業が採用しやすい。データにもあ
 | JSON変換 | Jackson | 3.1.5 |
 | DBアクセス | Spring Data JPA | 4.1.1 |
 | DBアクセス（ORM） | Hibernate ORM | 7.4.5 |
+| DBアクセス（決まりの本体） | Jakarta Persistence（`@Entity`・`@Column` など） | 3.2.0 |
 | DB接続プール | HikariCP | 7.0.2 |
 | DBドライバ | PostgreSQL JDBC Driver | 42.7.13 |
 | 入力チェック | Hibernate Validator | 9.1.3 |
+| 入力チェック（決まりの本体） | Jakarta Validation（`@NotNull`・`@Valid` など） | 3.1.1 |
 | テーブルの変更の記録 | Flyway（`spring-boot-starter-flyway` 4.1.1・`flyway-database-postgresql`） | 12.4.0 |
 | ログ | SLF4J（書く窓口）・Logback（実際に書き出す） | 2.0.18・1.5.38 |
 | テスト | JUnit Jupiter | 6.0.3 |
+| テスト（結果の確かめ） | AssertJ（`assertThat`） | 3.27.7 |
+| テスト（API を呼ぶ道具） | Spring Test（`MockMvcTester`） | 7.0.9 |
 | テスト（使い捨ての DB） | Testcontainers（`testcontainers-postgresql`・`testcontainers-junit-jupiter`） | 2.0.5 |
 | テスト（Testcontainers と Spring Boot をつなぐ） | `spring-boot-testcontainers` | 4.1.1 |
 
@@ -55,15 +61,16 @@ Javaとspringbootを使えると企業が採用しやすい。データにもあ
 
 | 区分 | 技術 | バージョン |
 | --- | --- | --- |
-| RDBMS | PostgreSQL（Dockerコンテナ、ポート5432） | 17.11 |
+| RDBMS | PostgreSQL（Dockerコンテナ、ポート5432） | 17.11（`docker-compose.yml`・テストの指定は `postgres:17`。コンテナを作り直すと、17 系の最新になる） |
 
 ### 開発ツール
 
 | 区分 | 技術 | バージョン |
 | --- | --- | --- |
 | バージョン管理 | Git | 2.55.0 |
+| コンテナ | Docker（Docker Desktop。DB と、テストの Testcontainers が使う） | 29.8.0 |
 | リポジトリホスティング | GitHub | - |
-| 自動チェック（CI） | GitHub Actions（`.github/workflows/ci.yml`。PR と master へのプッシュで、フロントの lint・build と、バックエンドの `./gradlew check`（コンパイル・PMD・Checkstyle・テスト）を動かす） | - |
+| 自動チェック（CI） | GitHub Actions（`.github/workflows/ci.yml`。PR と master へのプッシュで、フロントの lint・build と、バックエンドの `./gradlew check`（コンパイル・PMD・Checkstyle・テスト）を動かす） | actions/checkout v7・actions/setup-node v7・actions/setup-java v6・gradle/actions/setup-gradle v6 |
 
 ## 起動方法
 
