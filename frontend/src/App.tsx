@@ -1,6 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ApiError, createTask, deleteTask, fetchTasks, moveTask, patchTask, reorderTasks, updateTask } from './api/taskApi'
+import {
+  ApiError,
+  createTask,
+  deleteTask,
+  exportTasks,
+  fetchTasks,
+  importTasks,
+  moveTask,
+  patchTask,
+  reorderTasks,
+  updateTask,
+} from './api/taskApi'
 import Board from './components/Board'
+import DataButtons from './components/DataButtons'
 import SearchBar from './components/SearchBar'
 import { noFilters, type NewTask, type SortCriterion, type Task, type TaskFilters, type TaskPatch } from './types/task'
 
@@ -230,6 +242,29 @@ function App() {
       })
   }
 
+  // 「⬇ 書き出す」が押されたときに呼ばれる。全部のタスクを JSON のファイルとして保存させる
+  function handleExport() {
+    exportTasks()
+      .then(() => setError(null))
+      .catch((error) => {
+        setError(errorMessage(error, 'タスクを書き出し'))
+      })
+  }
+
+  // 「⬆ 読み込む」でファイルが選ばれ、確認で OK が押されたときに呼ばれる
+  // 今のタスクを全部、ファイルのタスクに置き換える。成功したら、今の条件で一覧を取り直す
+  // 失敗したときは、サーバーが何も変えていないので、画面もそのままでよい
+  function handleImport(file: File) {
+    importTasks(file)
+      .then(() => {
+        setError(null)
+        loadTasks(filters)
+      })
+      .catch((error) => {
+        setError(errorMessage(error, 'ファイルを読み込み'))
+      })
+  }
+
   // 最初の表示時に全件を取ってくる（loading は最初から true にしてある）
   useEffect(() => {
     loadTasks()
@@ -241,7 +276,11 @@ function App() {
       <p className="mb-4 hidden rounded bg-yellow-100 p-3 text-yellow-900 pointer-coarse:block">
         スマートフォンでは閲覧のみ可能です。タスクの追加・削除・移動はPCで行ってください
       </p>
-      <h1 className="mb-6 text-3xl font-bold text-[#1c3d5a]">Task Board</h1>
+      {/* 見出しの右に、書き出し・読み込みのボタンを並べる（幅が狭いときは下に回る） */}
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-3xl font-bold text-[#1c3d5a]">Task Board</h1>
+        <DataButtons onExport={handleExport} onImport={handleImport} />
+      </div>
       <SearchBar onSearch={handleSearch} searching={isFiltering} />
       {loading && <p className="mb-4 text-gray-600">読み込み中…</p>}
       {error && <p className="mb-4 text-red-600">{error}</p>}

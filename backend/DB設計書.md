@@ -62,6 +62,10 @@ text や必須のチェック（`@NotBlank`・`@Size`・`@NotNull` など）は�
 | 並び替え（PUT /reorder） | orderedIds | 必須（`@NotNull`）。中に空（null）の ID を含めない。別の列のタスクを含めない（含めると400） | 同上 |
 | 移動（PUT /{id}/move） | status | 必須（`@NotNull`）。todo / doing / done のどれか（enum） | [MoveRequest.java](src/main/java/com/taskmanagement/backend/task/MoveRequest.java) |
 | 移動（PUT /{id}/move） | prevId | 省略可（省略すると列の一番上）。あるタスクで、移動先の列にあり、動かすタスク自身ではないこと（ないと404、それ以外は400） | 同上 |
+| 読み込み（POST /import） | version | 必須（`@NotNull`）。1 だけ（それ以外は400） | [TaskFile.java](src/main/java/com/taskmanagement/backend/task/TaskFile.java) |
+| 読み込み（POST /import） | tasks | 必須（`@NotNull`）。10000件まで（`@Size`）。中に空（null）を含めない。1件1件を下の決まりでチェックする（`@Valid`） | 同上 |
+| 読み込み（POST /import） | tasks[].text | 必須。空文字・空白だけは不可（`@NotBlank`）。255文字まで（`@Size`） | [TaskFileItem.java](src/main/java/com/taskmanagement/backend/task/TaskFileItem.java) |
+| 読み込み（POST /import） | tasks[].status・priority・sortOrder | 必須（`@NotNull`。POST と違い、省略時の値は使わない）。status・priority は決められた値のどれか（enum） | 同上 |
 
 違反した場合は `400 Bad Request` が返り、DBには何も書き込まれない。DBのNOT NULL制約が「最低限の防波堤（NULLだけは防ぐ）」、アプリ側のバリデーションが「実用的な入力チェック（空文字・長さ・決められた値も防ぐ）」という役割分担になっている。
 
