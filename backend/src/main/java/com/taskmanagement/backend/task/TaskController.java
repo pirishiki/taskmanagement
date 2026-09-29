@@ -78,6 +78,14 @@ public class TaskController {
         return ResponseEntity.noContent().build();
     }
 
+    // 例：PUT /api/tasks/5/move  { "status": "doing", "prevId": 3 } → タスク5を「進行中」の列の、タスク3のすぐ下に入れる
+    // 返事は、動かしたあとのタスク（新しい列と番号が入っている）
+    @PutMapping("/{id}/move")
+    public TaskResponse moveTask(@PathVariable Long id, @Valid @RequestBody MoveRequest request) {
+        return TaskResponse.from(taskService.move(id, request));
+    }
+
+    // 自動並び替え用：1つの列の中で、送られてきたカードどうしの席（番号）を入れ替える
     @PutMapping("/reorder")
     public ResponseEntity<Void> reorder(@Valid @RequestBody ReorderRequest request) {
         taskService.reorder(request);

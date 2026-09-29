@@ -19,10 +19,9 @@ type Props = {
   onPatch: (id: number, patch: TaskPatch) => void
   onDelete: (id: number) => void
   onSort: (status: Task['status'], criterion: SortCriterion) => void
-  canDrag: boolean
 }
 
-function Column({ title, status, tasks, onAdd, onUpdate, onPatch, onDelete, onSort, canDrag }: Props) {
+function Column({ title, status, tasks, onAdd, onUpdate, onPatch, onDelete, onSort }: Props) {
   // ドラッグ＆ドロップ：この列を「置き場所」にする。id には列の status（'todo' など）を使う
   // カードが1枚もない列でも、ここに落とせるようにするため
   const { setNodeRef } = useDroppable({ id: status })
@@ -32,7 +31,7 @@ function Column({ title, status, tasks, onAdd, onUpdate, onPatch, onDelete, onSo
       <div className="mb-3 flex items-center justify-between gap-2">
         <h2 className="font-bold text-gray-700">{title}</h2>
         {/* 並び替えセレクト：選んだ時点で一度だけ並べ直す。value はいつも ''（「並び替え」）なので、選んだあとは表示が元に戻る */}
-        {/* 検索・絞り込み中は、見えていないタスクと並び順がずれるのを防ぐため、ドラッグと同じく使えなくする */}
+        {/* 検索・絞り込み中は、見えているカードだけを並べ直す（見えていないカードの位置は変わらない） */}
         <select
           value=""
           onChange={(event) => {
@@ -42,9 +41,7 @@ function Column({ title, status, tasks, onAdd, onUpdate, onPatch, onDelete, onSo
               onSort(status, selected.value)
             }
           }}
-          disabled={!canDrag}
-          title={canDrag ? undefined : '検索・絞り込み中は並び替えできません'}
-          className="rounded bg-white px-1 py-0.5 text-xs text-gray-600 disabled:opacity-50"
+          className="rounded bg-white px-1 py-0.5 text-xs text-gray-600"
         >
           <option value="" disabled>
             並び替え
@@ -67,7 +64,6 @@ function Column({ title, status, tasks, onAdd, onUpdate, onPatch, onDelete, onSo
               onUpdate={onUpdate}
               onPatch={onPatch}
               onDelete={onDelete}
-              canDrag={canDrag}
             />
           ))}
         </div>

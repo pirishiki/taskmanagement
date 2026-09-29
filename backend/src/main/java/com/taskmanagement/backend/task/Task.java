@@ -36,14 +36,15 @@ public class Task {
 
     private LocalDate dueDate;
 
+    // 同じ列の中での並び順（小さいほど上）。小数なので、2枚のカードの間（例：0 と 1 の間の 0.5）にも入れられる
     @Column(nullable = false)
-    private Integer sortOrder;
+    private Double sortOrder;
 
     protected Task() {
         // JPA（Hibernate）が DB から読んだ行を Task に詰めるときに使う。アプリのコードからは呼ばない
     }
 
-    public Task(String text, TaskStatus status, TaskPriority priority, LocalDate dueDate, Integer sortOrder) {
+    public Task(String text, TaskStatus status, TaskPriority priority, LocalDate dueDate, Double sortOrder) {
         this.text = text;
         this.status = status;
         this.priority = priority;
@@ -87,11 +88,11 @@ public class Task {
         this.dueDate = dueDate;
     }
 
-    public Integer getSortOrder() {
+    public Double getSortOrder() {
         return sortOrder;
     }
 
-    public void setSortOrder(Integer sortOrder) {
+    public void setSortOrder(Double sortOrder) {
         this.sortOrder = sortOrder;
     }
 }
