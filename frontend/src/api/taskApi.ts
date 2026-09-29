@@ -127,3 +127,33 @@ export async function reorderTasks(status: Task['status'], orderedIds: number[])
     body: JSON.stringify({ status, orderedIds }),
   })
 }
+
+// 全部のタスクを、JSON のファイルとしてパソコンに保存させる（書き出し）
+// 1. 返事の中身を Blob（ファイルの中身のかたまり）として受け取る
+// 2. その Blob を指す一時的な URL を作り、画面に出さない <a download> をクリックして保存させる
+// 3. 一時的な URL を片付ける
+// ファイル名は、返事の Content-Disposition の札（attachment; filename="tasks-2026-09-29.json"）から取る
+export async function exportTasks(): Promise<void> {
+  const response = await request('/api/tasks/export')
+  const blob = await response.blob()
+  const disposition = response.headers.get('Content-Disposition') ?? ''
+  const fileName = /filename="([^"]+)"/.exec(disposition)?.[1] ?? 'tasks.json'
+
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = fileName
+  link.click()
+  URL.revokeObjectURL(url)
+}
+
+// 選ばれたファイルを読み込み、今のタスクを全部そのファイルのタスクに置き換える。返ってくる中身はない（204）
+// 中身が正しいかどうかのチェックはサーバーに任せ、ファイルの文字をそのまま送る
+// 1件でもおかしければ 400（ApiError）になり、今のタスクは変わらない
+export async function importTasks(file: File): Promise<void> {
+  await request('/api/tasks/import', {
+    method: 'POST',
+    headers: jsonHeaders,
+    body: await file.text(),
+  })
+}
