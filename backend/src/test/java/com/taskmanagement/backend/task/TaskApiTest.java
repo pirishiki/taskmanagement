@@ -8,11 +8,13 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.assertj.MockMvcTester;
 import org.springframework.test.web.servlet.assertj.MvcTestResult;
 
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.util.List;
 
@@ -400,5 +402,131 @@ class TaskApiTest {
         assertThat(result).hasContentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON);
         assertThat(result).bodyJson().extractingPath("$.detail")
                 .isEqualTo("id が " + task.getId() + " のタスクは見つかりません");
+    }
+
+    // ここから下は、書き出し（GET /api/tasks/export）と読み込み（POST /api/tasks/import）のテスト
+
+    // POST /api/tasks/import に、json をファイルの中身として送る
+    private MvcTestResult importFile(String json) {
+        return mvc.post().uri("/api/tasks/import")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json)
+                .exchange();
+    }
+
+    @Test
+    @DisplayName("書き出すと、絞り込みに関係なく全部のタスクが、id なしで列→並び順に返り、ファイル名の札が付く")
+    void exportReturnsAllTasksAsFile() {
+        // 準備：「やるべきこと」に A・B、「終わったこと」に C
+        saveTask("A", TaskStatus.TODO, 0);
+        saveTask("B", TaskStatus.TODO, 1);
+        saveTask("C", TaskStatus.DONE, 0);
+
+        // 実行：絞り込みの条件を付けても、書き出しは全部を返す
+        MvcTestResult result = mvc.get().uri("/api/tasks/export").param("priority", "high").exchange();
+
+        // 確かめる：/{id} ではなく書き出しの入口に届き、ファイルとして保存される札が付いている
+        assertThat(result).hasStatus(HttpStatus.OK);
+        assertThat(result).headers().hasValue(HttpHeaders.CONTENT_DISPOSITION,
+                "attachment; filename=\"tasks-" + LocalDate.now() + ".json\"");
+        assertThat(result).bodyJson().extractingPath("$.version").isEqualTo(1);
+        // 列は文字の順（done → todo）、その中は並び順の小さい順
+        assertThat(result).bodyJson().extractingPath("$.tasks[*].text").asArray().containsExactly("C", "A", "B");
+        assertThat(result).bodyJson().extractingPath("$.tasks[0]").asMap().doesNotContainKey("id");
+    }
+
+    @Test
+    @DisplayName("読み込むと、今のタスクが全部消え、ファイルのタスクだけになる。列ごとの順番はファイルどおりで、番号は 0・1・2… になる")
+    void importReplacesAllTasks() {
+        // 準備：今あるタスク
+        saveTask("古いタスク", TaskStatus.TODO, 0);
+
+        // 実行：「やるべきこと」に P(5)・Q(0.5)・R(2)、「進行中」に D が入ったファイルを読み込む
+        MvcTestResult result = importFile("""
+                {"version": 1, "tasks": [
+                  {"text": "P", "status": "todo", "priority": "low", "sortOrder": 5},
+                  {"text": "Q", "status": "todo", "priority": "high", "sortOrder": 0.5},
+                  {"text": "R", "status": "todo", "priority": "medium", "sortOrder": 2},
+                  {"text": "D", "status": "doing", "priority": "high", "dueDate": "2026-10-01", "sortOrder": 0}
+                ]}
+                """);
+
+        // 確かめる：古いタスクは消え、Q・R・P の順に 0・1・2 番になっている
+        assertThat(result).hasStatus(HttpStatus.NO_CONTENT);
+        assertThat(taskRepository.count()).isEqualTo(4);
+        assertThat(textsIn(TaskStatus.TODO)).containsExactly("Q", "R", "P");
+        assertThat(taskRepository.findByStatusOrderBySortOrderAsc(TaskStatus.TODO))
+                .extracting(Task::getSortOrder).containsExactly(0.0, 1.0, 2.0);
+        assertThat(taskRepository.findByStatusOrderBySortOrderAsc(TaskStatus.DOING)).singleElement()
+                .satisfies(task -> {
+                    assertThat(task.getText()).isEqualTo("D");
+                    assertThat(task.getPriority()).isEqualTo(TaskPriority.HIGH);
+                    assertThat(task.getDueDate()).isEqualTo(LocalDate.of(2026, 10, 1));
+                });
+    }
+
+    @Test
+    @DisplayName("読み込むファイルに1件でもおかしいタスクがあると 400 になり、今のタスクは1件も消えない")
+    void importWithBlankTextKeepsCurrentTasks() {
+        saveTask("今あるタスク", TaskStatus.TODO, 0);
+
+        // 2件目（tasks[1]）のタスク名が空
+        MvcTestResult result = importFile("""
+                {"version": 1, "tasks": [
+                  {"text": "よいタスク", "status": "todo", "priority": "high", "sortOrder": 0},
+                  {"text": "", "status": "todo", "priority": "high", "sortOrder": 1}
+                ]}
+                """);
+
+        assertThat(result).hasStatus(HttpStatus.BAD_REQUEST);
+        assertThat(result).bodyJson().extractingPath("$.errors['tasks[1].text']").isEqualTo("タスク名を入力してください");
+        assertThat(textsIn(TaskStatus.TODO)).containsExactly("今あるタスク");
+    }
+
+    @Test
+    @DisplayName("読み込むファイルの version が 1 でないとき、JSON として読めないときは 400 になり、今のタスクは消えない")
+    void importWithUnknownVersionOrBrokenJsonIsBadRequest() {
+        saveTask("今あるタスク", TaskStatus.TODO, 0);
+
+        MvcTestResult unknownVersion = importFile("""
+                {"version": 2, "tasks": []}
+                """);
+        assertThat(unknownVersion).hasStatus(HttpStatus.BAD_REQUEST);
+        assertThat(unknownVersion).bodyJson().extractingPath("$.detail")
+                .isEqualTo("この版（version: 2）のファイルは読み込めません。読み込めるのは version が 1 のファイルです");
+
+        assertThat(importFile("{\"version\": 1, \"tasks\": [")).hasStatus(HttpStatus.BAD_REQUEST);
+
+        assertThat(textsIn(TaskStatus.TODO)).containsExactly("今あるタスク");
+    }
+
+    @Test
+    @DisplayName("書き出したファイルをそのまま読み込むと、書き出したときと同じ中身に戻る")
+    void exportThenImportRestoresTasks() {
+        // 準備：書き出す前のタスク
+        taskRepository.save(new Task("牛乳を買う", TaskStatus.TODO, TaskPriority.HIGH, LocalDate.of(2026, 10, 1), 0.0));
+        saveTask("パンを買う", TaskStatus.TODO, 1);
+        saveTask("本を読む", TaskStatus.DOING, 0);
+
+        // 書き出して、その中身（JSON の文字）を取っておく
+        MvcTestResult exported = mvc.get().uri("/api/tasks/export").exchange();
+        String file = new String(exported.getResponse().getContentAsByteArray(), StandardCharsets.UTF_8);
+
+        // 書き出したあとで、タスクを変えてしまう
+        taskRepository.deleteAll();
+        saveTask("あとで足したタスク", TaskStatus.DONE, 0);
+
+        // 実行：取っておいたファイルを読み込む
+        assertThat(importFile(file)).hasStatus(HttpStatus.NO_CONTENT);
+
+        // 確かめる：書き出したときの中身に戻っている
+        assertThat(textsIn(TaskStatus.TODO)).containsExactly("牛乳を買う", "パンを買う");
+        assertThat(textsIn(TaskStatus.DOING)).containsExactly("本を読む");
+        assertThat(textsIn(TaskStatus.DONE)).isEmpty();
+        assertThat(taskRepository.findByStatusOrderBySortOrderAsc(TaskStatus.TODO).getFirst())
+                .satisfies(task -> {
+                    assertThat(task.getPriority()).isEqualTo(TaskPriority.HIGH);
+                    assertThat(task.getDueDate()).isEqualTo(LocalDate.of(2026, 10, 1));
+                });
     }
 }

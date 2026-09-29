@@ -1,6 +1,8 @@
 package com.taskmanagement.backend.task;
 
 import jakarta.validation.Valid;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -14,6 +16,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.time.LocalDate;
 import java.util.List;
 
 @RestController
@@ -41,6 +44,27 @@ public class TaskController {
         return taskService.findTasks(keyword, priority, due).stream()
                 .map(TaskResponse::from)
                 .toList();
+    }
+
+    // 書き出し：全部のタスクを、ファイルの形（TaskFile の JSON）で返す
+    // Content-Disposition の札に attachment（添付ファイル）とファイル名を書くと、ブラウザは画面に出さずにファイルとして保存する
+    // URL の "export" は、下の "/{id}" より先に選ばれる（Spring は、決まった文字の URL を優先する）
+    @GetMapping("/export")
+    public ResponseEntity<TaskFile> exportTasks() {
+        ContentDisposition disposition = ContentDisposition.attachment()
+                .filename("tasks-" + LocalDate.now() + ".json")
+                .build();
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, disposition.toString())
+                .body(taskService.exportTasks());
+    }
+
+    // 読み込み：今のタスクを全部消して、送られてきたファイルのタスクに置き換える。成功したら 204（中身なし）
+    // @Valid で、ファイル全体と、中のタスク1件1件をチェックする。1件でもおかしければ 400 で、今のタスクは消えない
+    @PostMapping("/import")
+    public ResponseEntity<Void> importTasks(@Valid @RequestBody TaskFile file) {
+        taskService.importTasks(file);
+        return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/{id}")

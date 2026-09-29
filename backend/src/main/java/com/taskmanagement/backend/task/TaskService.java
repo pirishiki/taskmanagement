@@ -8,6 +8,9 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -42,6 +45,50 @@ public class TaskService {
     @Transactional(readOnly = true)
     public Optional<Task> findTask(Long id) {
         return taskRepository.findById(id);
+    }
+
+    // 書き出し用：全部のタスク（絞り込みには関係なく）を、ファイルの形（TaskFile）にして返す
+    // 並び順は一覧（findTasks）と同じ。ファイルを開いたときに、画面と同じ順に並んで見えるように
+    @Transactional(readOnly = true)
+    public TaskFile exportTasks() {
+        List<TaskFileItem> items = taskRepository.findAll(Sort.by("status", "sortOrder")).stream()
+                .map(TaskFileItem::from)
+                .toList();
+        return new TaskFile(TaskFile.CURRENT_VERSION, LocalDateTime.now(), items);
+    }
+
+    // 読み込み用：今のタスクを全部消して、ファイル（TaskFile）のタスクに置き換える
+    // クラスに @Transactional が付いているので、途中で失敗したら、消したことも含めて全部取り消される（全部か、何もしないか）
+    // 中身のチェック（タスク名が空など）は、ここに来る前に Controller の @Valid が済ませている
+    public void importTasks(TaskFile file) {
+        // 1. 読み込めない版のファイルなら、何も消さずに断る（400）
+        if (file.version() != TaskFile.CURRENT_VERSION) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "この版（version: " + file.version()
+                    + "）のファイルは読み込めません。読み込めるのは version が " + TaskFile.CURRENT_VERSION + " のファイルです");
+        }
+
+        // 2. 今のタスクを全部消す（deleteAllInBatch は、1件ずつではなく、1回の命令でまとめて消す）
+        taskRepository.deleteAllInBatch();
+
+        // 3. 列ごとに分け、ファイルの並び順（sortOrder）の小さい順に並べて、上から 0, 1, 2… と振り直す
+        // （手で直したファイルでは、同じ列に同じ番号が2つあることもある。振り直すと、順番がはっきり決まる）
+        // sorted は、同じ番号どうしの順番を変えない（ファイルに書かれている順のまま）
+        Map<TaskStatus, List<TaskFileItem>> itemsByStatus = file.tasks().stream()
+                .collect(Collectors.groupingBy(TaskFileItem::status));
+        List<Task> tasks = new ArrayList<>();
+        for (List<TaskFileItem> column : itemsByStatus.values()) {
+            List<TaskFileItem> sorted = column.stream()
+                    .sorted(Comparator.comparing(TaskFileItem::sortOrder))
+                    .toList();
+            for (int position = 0; position < sorted.size(); position++) {
+                TaskFileItem item = sorted.get(position);
+                tasks.add(new Task(item.text().trim(), item.status(), item.priority(), item.dueDate(),
+                        (double) position));
+            }
+        }
+
+        // 4. まとめて保存する。id は DB が新しく付ける
+        taskRepository.saveAll(tasks);
     }
 
     public Task createTask(TaskRequest request) {
