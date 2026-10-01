@@ -12,7 +12,8 @@ import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
-// 列のルールをまとめる係（作る・名前を変える・完了の列を決める・並べ替える・消す）
+// 列のルールをまとめる係（作る・名前を変える・並べ替える・消す）
+// 完了の列は「終わったこと」に決まっていて、付け替えはしない
 // @Transactional：メソッドの中の DB 操作を「ひとまとまり」にする。途中で失敗したら、そのメソッドでした変更を全部取り消す
 @Service
 @Transactional
@@ -34,37 +35,18 @@ public class BoardColumnService {
         return columnRepository.findAllByOrderBySortOrderAsc();
     }
 
-    // 新しい列を、右端に足す。新しい列には「完了の列」の印をつけない
+    // 新しい列を、右端に足す。新しい列には「基本の列」「完了の列」の印をつけない（あとから消せる列になる）
     public BoardColumn createColumn(String name) {
         double sortOrder = columnRepository.findTopByOrderBySortOrderDesc()
                 .map(last -> last.getSortOrder() + 1)
                 .orElse(0.0);
-        return columnRepository.save(new BoardColumn(name.trim(), sortOrder, false));
+        return columnRepository.save(new BoardColumn(name.trim(), sortOrder, false, false));
     }
 
     // 列の名前を変える。列がなければ 404
     public BoardColumn renameColumn(Long id, String name) {
         BoardColumn column = findOrThrow(id);
         column.setName(name.trim());
-        return columnRepository.save(column);
-    }
-
-    // この列を「完了の列」にする。今まで印がついていた列からは、印を外す（印はいつも1つ）
-    // 印を外すだけの操作は用意しない。完了の列が1つもないと、完了ボタン（○）の移し先がなくなるため
-    public BoardColumn markAsDone(Long id) {
-        BoardColumn column = findOrThrow(id);
-        if (column.isDone()) {
-            return column; // もう完了の列なら、何もしない
-        }
-
-        // 先に古い印を外して、すぐ DB へ書き込む（saveAndFlush）
-        // 新しい印を先に書くと、一瞬だけ印が2つになり、V3 で作った「印は1つまで」の決まりに止められるため
-        columnRepository.findByDoneTrue().ifPresent(old -> {
-            old.setDone(false);
-            columnRepository.saveAndFlush(old);
-        });
-
-        column.setDone(true);
         return columnRepository.save(column);
     }
 
@@ -91,14 +73,14 @@ public class BoardColumnService {
 
     // 列を消す。列がなければ 404
     // 次の列は消せない（409：今のボードの状態と合わないので、できない）
+    // ・基本の列（やるべきこと・進行中・終わったこと）：カンバンの基本の流れなので残す。完了の列（終わったこと）もこれに入る
     // ・中にタスクがいる列：うっかりタスクを失わないように。先にタスクをほかの列へ移すか、消してもらう
-    // ・完了の列：消すと、完了ボタン（○）の移し先がなくなる。先に別の列を完了の列にしてもらう
-    // （完了の列は消せないので、列が1つもなくなることもない）
+    // （基本の列は消せないので、列が1つもなくなることも、完了ボタン（○）の移し先がなくなることもない）
     public void deleteColumn(Long id) {
         BoardColumn column = findOrThrow(id);
-        if (column.isDone()) {
+        if (column.isFixed()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "完了の列は消せません。先に別の列を完了の列にしてください");
+                    "基本の列（やるべきこと・進行中・終わったこと）は消せません");
         }
         if (taskRepository.existsByColumnId(id)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,

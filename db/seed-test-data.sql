@@ -9,10 +9,10 @@ SET client_encoding = 'UTF8';
 -- RESTART IDENTITY：番号の振り直し。列は 1・2・3 番から振られるので、下のタスクの column_id にその番号を書ける
 TRUNCATE tasks, board_columns RESTART IDENTITY;
 
-INSERT INTO board_columns (name, sort_order, is_done) VALUES
-    ('やるべきこと', 0, FALSE),  -- 1 番
-    ('進行中',       1, FALSE),  -- 2 番
-    ('終わったこと', 2, TRUE);   -- 3 番（完了の列）
+INSERT INTO board_columns (name, sort_order, is_fixed, is_done) VALUES
+    ('やるべきこと', 0, TRUE, FALSE),  -- 1 番（基本の列）
+    ('進行中',       1, TRUE, FALSE),  -- 2 番（基本の列）
+    ('終わったこと', 2, TRUE, TRUE);   -- 3 番（基本の列・完了の列）
 
 INSERT INTO tasks (text, column_id, priority, due_date, sort_order) VALUES
     ('スーパーで買い物をする',       1, 'high',   '2026-09-25', 0),

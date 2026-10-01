@@ -15,7 +15,7 @@ import java.util.List;
 // 版ごとの形：
 //   version 2（今の形）：列の一覧（columns）の中に、その列のタスクを入れる
 //     例：{"version": 2, "exportedAt": "...",
-//          "columns": [{"name": "やるべきこと", "done": false, "tasks": [{"text": "牛乳を買う", ...}]}]}
+//          "columns": [{"name": "やるべきこと", "fixed": true, "done": false, "tasks": [{"text": "牛乳を買う", ...}]}]}
 //   version 1（#36 の形。読み込みだけできる）：タスクの一覧（tasks）に、列を status（todo・doing・done）で書く
 //     例：{"version": 1, "exportedAt": "...", "tasks": [{"text": "牛乳を買う", "status": "todo", ...}]}
 // 使わないほう（version 2 なら tasks）は null になる。@JsonInclude(NON_NULL) で、null の項目は書き出さない

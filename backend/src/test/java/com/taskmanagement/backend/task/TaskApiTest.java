@@ -51,9 +51,9 @@ class TaskApiTest {
     void resetBoard() {
         taskRepository.deleteAll();
         columnRepository.deleteAll();
-        todo = columnRepository.save(new BoardColumn("やるべきこと", 0.0, false)).getId();
-        doing = columnRepository.save(new BoardColumn("進行中", 1.0, false)).getId();
-        done = columnRepository.save(new BoardColumn("終わったこと", 2.0, true)).getId();
+        todo = columnRepository.save(new BoardColumn("やるべきこと", 0.0, true, false)).getId();
+        doing = columnRepository.save(new BoardColumn("進行中", 1.0, true, false)).getId();
+        done = columnRepository.save(new BoardColumn("終わったこと", 2.0, true, true)).getId();
     }
 
     @Test
@@ -384,7 +384,7 @@ class TaskApiTest {
     @DisplayName("ない列の番号（columnId）を送ると 400 になり、detail に理由が入る。DB には登録されない")
     void createWithUnknownColumnIsBadRequest() {
         // 準備：一度作って消した列の番号を使う（その番号の列は確実に存在しない）
-        BoardColumn gone = columnRepository.save(new BoardColumn("消す列", 9.0, false));
+        BoardColumn gone = columnRepository.save(new BoardColumn("消す列", 9.0, false, false));
         columnRepository.delete(gone);
 
         MvcTestResult result = mvc.post().uri("/api/tasks")
@@ -488,6 +488,8 @@ class TaskApiTest {
         assertThat(result).bodyJson().extractingPath("$.version").isEqualTo(2);
         assertThat(result).bodyJson().extractingPath("$.columns[*].name").asArray()
                 .containsExactly("やるべきこと", "進行中", "終わったこと");
+        assertThat(result).bodyJson().extractingPath("$.columns[*].fixed").asArray()
+                .containsExactly(true, true, true);
         assertThat(result).bodyJson().extractingPath("$.columns[*].done").asArray()
                 .containsExactly(false, false, true);
         assertThat(result).bodyJson().extractingPath("$.columns[0].tasks[*].text").asArray().containsExactly("A", "B");
@@ -503,24 +505,27 @@ class TaskApiTest {
         // 準備：今あるタスク
         saveTask("古いタスク", todo, 0);
 
-        // 実行：「アイデア」「作業中」「完了」の3列が入ったファイルを読み込む
+        // 実行：基本の列「アイデア」「作業中」「完了」と、足した列「確認待ち」が入ったファイルを読み込む
         MvcTestResult result = importFile("""
                 {"version": 2, "columns": [
-                  {"name": "アイデア", "tasks": [
+                  {"name": "アイデア", "fixed": true, "tasks": [
                     {"text": "Q", "priority": "high"},
                     {"text": "R", "priority": "medium"},
                     {"text": "P", "priority": "low"}
                   ]},
-                  {"name": "作業中", "tasks": [
+                  {"name": "作業中", "fixed": true, "tasks": [
                     {"text": "D", "priority": "high", "dueDate": "2026-10-01"}
                   ]},
-                  {"name": "完了", "done": true, "tasks": []}
+                  {"name": "確認待ち", "tasks": []},
+                  {"name": "完了", "fixed": true, "done": true, "tasks": []}
                 ]}
                 """);
 
         // 確かめる：古い列とタスクは消え、ファイルどおりになっている。番号は 0・1・2…
         assertThat(result).hasStatus(HttpStatus.NO_CONTENT);
-        assertThat(columnNames()).containsExactly("アイデア", "作業中", "完了");
+        assertThat(columnNames()).containsExactly("アイデア", "作業中", "確認待ち", "完了");
+        assertThat(columnRepository.findAllByOrderBySortOrderAsc())
+                .extracting(BoardColumn::isFixed).containsExactly(true, true, false, true);
         assertThat(columnRepository.findByDoneTrue()).get()
                 .satisfies(column -> assertThat(column.getName()).isEqualTo("完了"));
         assertThat(taskRepository.count()).isEqualTo(4);
@@ -550,9 +555,10 @@ class TaskApiTest {
                 ]}
                 """);
 
-        // 確かめる：3つの列が作られ、「終わったこと」が完了の列。Q・R・P の順になっている
+        // 確かめる：3つの基本の列が作られ、「終わったこと」が完了の列。Q・R・P の順になっている
         assertThat(result).hasStatus(HttpStatus.NO_CONTENT);
         assertThat(columnNames()).containsExactly("やるべきこと", "進行中", "終わったこと");
+        assertThat(columnRepository.findAll()).allSatisfy(column -> assertThat(column.isFixed()).isTrue());
         assertThat(columnRepository.findByDoneTrue()).get()
                 .satisfies(column -> assertThat(column.getName()).isEqualTo("終わったこと"));
         assertThat(textsInColumnNamed("やるべきこと")).containsExactly("Q", "R", "P");
@@ -582,23 +588,45 @@ class TaskApiTest {
     }
 
     @Test
-    @DisplayName("読み込むファイルの完了の列がちょうど1つでないと 400 になり、今の列とタスクは消えない")
-    void importWithoutOneDoneColumnIsBadRequest() {
+    @DisplayName("読み込むファイルの基本の列が3つでない、完了の列が1つでない、完了の列が基本の列でない、のどれかなら 400 になり、今の列とタスクは消えない")
+    void importWithWrongFixedOrDoneColumnsIsBadRequest() {
         saveTask("今あるタスク", todo, 0);
 
+        // 基本の列が2つしかない
+        MvcTestResult twoFixed = importFile("""
+                {"version": 2, "columns": [
+                  {"name": "A", "fixed": true, "tasks": []},
+                  {"name": "B", "fixed": true, "done": true, "tasks": []}
+                ]}
+                """);
+        assertThat(twoFixed).hasStatus(HttpStatus.BAD_REQUEST);
+        assertThat(twoFixed).bodyJson().extractingPath("$.detail")
+                .isEqualTo("基本の列（fixed が true の列）は、ちょうど3つにしてください（今は 2 個）");
+
+        // 完了の列がない
         MvcTestResult noDone = importFile("""
-                {"version": 2, "columns": [{"name": "A", "tasks": []}, {"name": "B", "tasks": []}]}
+                {"version": 2, "columns": [
+                  {"name": "A", "fixed": true, "tasks": []},
+                  {"name": "B", "fixed": true, "tasks": []},
+                  {"name": "C", "fixed": true, "tasks": []}
+                ]}
                 """);
         assertThat(noDone).hasStatus(HttpStatus.BAD_REQUEST);
         assertThat(noDone).bodyJson().extractingPath("$.detail")
                 .isEqualTo("完了の列（done が true の列）は、ちょうど1つにしてください（今は 0 個）");
 
-        MvcTestResult twoDone = importFile("""
+        // 完了の列が、足した列（基本の列ではない）
+        MvcTestResult doneNotFixed = importFile("""
                 {"version": 2, "columns": [
-                  {"name": "A", "done": true, "tasks": []}, {"name": "B", "done": true, "tasks": []}
+                  {"name": "A", "fixed": true, "tasks": []},
+                  {"name": "B", "fixed": true, "tasks": []},
+                  {"name": "C", "fixed": true, "tasks": []},
+                  {"name": "確認待ち", "done": true, "tasks": []}
                 ]}
                 """);
-        assertThat(twoDone).hasStatus(HttpStatus.BAD_REQUEST);
+        assertThat(doneNotFixed).hasStatus(HttpStatus.BAD_REQUEST);
+        assertThat(doneNotFixed).bodyJson().extractingPath("$.detail")
+                .isEqualTo("完了の列は、基本の列（fixed が true の列）にしてください");
 
         assertThat(columnNames()).containsExactly("やるべきこと", "進行中", "終わったこと");
         assertThat(textsIn(todo)).containsExactly("今あるタスク");
@@ -624,17 +652,12 @@ class TaskApiTest {
     @Test
     @DisplayName("書き出したファイルをそのまま読み込むと、書き出したときと同じ中身に戻る")
     void exportThenImportRestoresBoard() {
-        // 準備：書き出す前の列とタスク（列を1つ足して、完了の列を「進行中」に変えておく）
-        columnRepository.save(new BoardColumn("確認待ち", 3.0, false));
-        BoardColumn doneColumn = columnRepository.findById(done).orElseThrow();
-        doneColumn.setDone(false);
-        columnRepository.saveAndFlush(doneColumn);
-        BoardColumn doingColumn = columnRepository.findById(doing).orElseThrow();
-        doingColumn.setDone(true);
-        columnRepository.saveAndFlush(doingColumn);
+        // 準備：書き出す前の列とタスク（列「確認待ち」を足して、そこにもタスクを入れておく）
+        Long review = columnRepository.save(new BoardColumn("確認待ち", 3.0, false, false)).getId();
         taskRepository.save(new Task("牛乳を買う", todo, TaskPriority.HIGH, LocalDate.of(2026, 10, 1), 0.0));
         saveTask("パンを買う", todo, 1);
         saveTask("本を読む", doing, 0);
+        saveTask("見直す", review, 0);
 
         // 書き出して、その中身（JSON の文字）を取っておく
         MvcTestResult exported = mvc.get().uri("/api/tasks/export").exchange();
@@ -649,11 +672,14 @@ class TaskApiTest {
 
         // 確かめる：書き出したときの中身に戻っている
         assertThat(columnNames()).containsExactly("やるべきこと", "進行中", "終わったこと", "確認待ち");
+        assertThat(columnRepository.findAllByOrderBySortOrderAsc())
+                .extracting(BoardColumn::isFixed).containsExactly(true, true, true, false);
         assertThat(columnRepository.findByDoneTrue()).get()
-                .satisfies(column -> assertThat(column.getName()).isEqualTo("進行中"));
+                .satisfies(column -> assertThat(column.getName()).isEqualTo("終わったこと"));
         assertThat(textsInColumnNamed("やるべきこと")).containsExactly("牛乳を買う", "パンを買う");
         assertThat(textsInColumnNamed("進行中")).containsExactly("本を読む");
         assertThat(textsInColumnNamed("終わったこと")).isEmpty();
+        assertThat(textsInColumnNamed("確認待ち")).containsExactly("見直す");
         assertThat(taskRepository.findAll()).filteredOn(task -> "牛乳を買う".equals(task.getText())).singleElement()
                 .satisfies(task -> {
                     assertThat(task.getPriority()).isEqualTo(TaskPriority.HIGH);

@@ -25,7 +25,13 @@ public class BoardColumn {
     @Column(nullable = false)
     private Double sortOrder;
 
-    // 「完了の列」の印。完了ボタン（○）を押したタスクは、この印がついた列へ移る。全部の列の中で1つまで
+    // 「基本の列」の印（やるべきこと・進行中・終わったこと）。基本の列は消せない。あとから足した列は false
+    // 作ったあとで変えることはないので、set のメソッドは用意しない
+    @Column(name = "is_fixed", nullable = false)
+    private boolean fixed;
+
+    // 「完了の列」の印。完了ボタン（○）を押したタスクは、この印がついた列へ移る。全部の列の中で1つだけ（「終わったこと」）
+    // 作ったあとで変えることはないので、set のメソッドは用意しない
     @Column(name = "is_done", nullable = false)
     private boolean done;
 
@@ -33,9 +39,10 @@ public class BoardColumn {
         // JPA（Hibernate）が DB から読んだ行を BoardColumn に詰めるときに使う。アプリのコードからは呼ばない
     }
 
-    public BoardColumn(String name, Double sortOrder, boolean done) {
+    public BoardColumn(String name, Double sortOrder, boolean fixed, boolean done) {
         this.name = name;
         this.sortOrder = sortOrder;
+        this.fixed = fixed;
         this.done = done;
     }
 
@@ -59,11 +66,11 @@ public class BoardColumn {
         this.sortOrder = sortOrder;
     }
 
-    public boolean isDone() {
-        return done;
+    public boolean isFixed() {
+        return fixed;
     }
 
-    public void setDone(boolean done) {
-        this.done = done;
+    public boolean isDone() {
+        return done;
     }
 }

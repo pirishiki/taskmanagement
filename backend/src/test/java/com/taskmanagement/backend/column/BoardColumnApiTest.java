@@ -48,9 +48,9 @@ class BoardColumnApiTest {
     void resetBoard() {
         taskRepository.deleteAll();
         columnRepository.deleteAll();
-        todo = columnRepository.save(new BoardColumn("やるべきこと", 0.0, false)).getId();
-        doing = columnRepository.save(new BoardColumn("進行中", 1.0, false)).getId();
-        done = columnRepository.save(new BoardColumn("終わったこと", 2.0, true)).getId();
+        todo = columnRepository.save(new BoardColumn("やるべきこと", 0.0, true, false)).getId();
+        doing = columnRepository.save(new BoardColumn("進行中", 1.0, true, false)).getId();
+        done = columnRepository.save(new BoardColumn("終わったこと", 2.0, true, true)).getId();
     }
 
     // 今の列の名前を、左から順に並べて返す
@@ -63,19 +63,25 @@ class BoardColumnApiTest {
         taskRepository.save(new Task("タスク", columnId, TaskPriority.MEDIUM, null, 0.0));
     }
 
+    // あとから足した列（基本の列ではない列）を、右端に1つ作る
+    private Long saveCustomColumn(String name) {
+        return columnRepository.save(new BoardColumn(name, 3.0, false, false)).getId();
+    }
+
     @Test
-    @DisplayName("一覧は、全部の列を左から順に、完了の印つきで返す")
+    @DisplayName("一覧は、全部の列を左から順に、基本の列・完了の列の印つきで返す")
     void listReturnsColumnsFromLeft() {
         MvcTestResult result = mvc.get().uri("/api/columns").exchange();
 
         assertThat(result).hasStatus(HttpStatus.OK);
         assertThat(result).bodyJson().extractingPath("$[*].name").asArray()
                 .containsExactly("やるべきこと", "進行中", "終わったこと");
+        assertThat(result).bodyJson().extractingPath("$[*].fixed").asArray().containsExactly(true, true, true);
         assertThat(result).bodyJson().extractingPath("$[*].done").asArray().containsExactly(false, false, true);
     }
 
     @Test
-    @DisplayName("列を作ると 201 が返り、名前の前後の空白を取って、完了の印なしで右端に入る")
+    @DisplayName("列を作ると 201 が返り、名前の前後の空白を取って、基本の列・完了の列の印なしで右端に入る")
     void createAddsColumnToRight() {
         MvcTestResult result = mvc.post().uri("/api/columns")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -86,6 +92,7 @@ class BoardColumnApiTest {
 
         assertThat(result).hasStatus(HttpStatus.CREATED);
         assertThat(result).bodyJson().extractingPath("$.name").isEqualTo("確認待ち");
+        assertThat(result).bodyJson().extractingPath("$.fixed").isEqualTo(false);
         assertThat(result).bodyJson().extractingPath("$.done").isEqualTo(false);
         assertThat(result).bodyJson().extractingPath("$.sortOrder").isEqualTo(3.0);
         assertThat(columnNames()).containsExactly("やるべきこと", "進行中", "終わったこと", "確認待ち");
@@ -122,7 +129,7 @@ class BoardColumnApiTest {
         assertThat(columnNames()).containsExactly("やるべきこと", "作業中", "終わったこと");
 
         // 準備：一度作って消した列の番号を使う（その番号の列は確実に存在しない）
-        BoardColumn gone = columnRepository.save(new BoardColumn("消す列", 9.0, false));
+        BoardColumn gone = columnRepository.save(new BoardColumn("消す列", 9.0, false, false));
         columnRepository.delete(gone);
         MvcTestResult notFound = mvc.put().uri("/api/columns/{id}", gone.getId())
                 .contentType(MediaType.APPLICATION_JSON)
@@ -133,23 +140,6 @@ class BoardColumnApiTest {
         assertThat(notFound).hasStatus(HttpStatus.NOT_FOUND);
         assertThat(notFound).bodyJson().extractingPath("$.detail")
                 .isEqualTo("id が " + gone.getId() + " の列は見つかりません");
-    }
-
-    @Test
-    @DisplayName("完了の列にすると、今までの完了の列から印が外れ、印はいつも1つになる")
-    void markAsDoneMovesTheMark() {
-        MvcTestResult result = mvc.put().uri("/api/columns/{id}/done", doing).exchange();
-
-        assertThat(result).hasStatus(HttpStatus.OK);
-        assertThat(result).bodyJson().extractingPath("$.done").isEqualTo(true);
-        assertThat(columnRepository.findByDoneTrue()).get()
-                .satisfies(column -> assertThat(column.getId()).isEqualTo(doing));
-        assertThat(columnRepository.findById(done)).get()
-                .satisfies(column -> assertThat(column.isDone()).isFalse());
-
-        // もう完了の列になっている列にもう一度頼んでも、何も変わらない
-        assertThat(mvc.put().uri("/api/columns/{id}/done", doing)).hasStatus(HttpStatus.OK);
-        assertThat(columnRepository.findAll()).filteredOn(BoardColumn::isDone).hasSize(1);
     }
 
     @Test
@@ -192,42 +182,58 @@ class BoardColumnApiTest {
     }
 
     @Test
-    @DisplayName("タスクのいない列は消せる（204）")
-    void deleteEmptyColumn() {
-        assertThat(mvc.delete().uri("/api/columns/{id}", doing)).hasStatus(HttpStatus.NO_CONTENT);
-        assertThat(columnNames()).containsExactly("やるべきこと", "終わったこと");
+    @DisplayName("あとから足した列は、タスクがいなければ消せる（204）")
+    void deleteEmptyCustomColumn() {
+        Long review = saveCustomColumn("確認待ち");
+
+        assertThat(mvc.delete().uri("/api/columns/{id}", review)).hasStatus(HttpStatus.NO_CONTENT);
+        assertThat(columnNames()).containsExactly("やるべきこと", "進行中", "終わったこと");
     }
 
     @Test
     @DisplayName("タスクのいる列を消そうとすると 409 になり、列もタスクも残る")
     void deleteColumnWithTasksIsConflict() {
-        saveTaskIn(todo);
+        Long review = saveCustomColumn("確認待ち");
+        saveTaskIn(review);
 
-        MvcTestResult result = mvc.delete().uri("/api/columns/{id}", todo).exchange();
+        MvcTestResult result = mvc.delete().uri("/api/columns/{id}", review).exchange();
 
         assertThat(result).hasStatus(HttpStatus.CONFLICT);
         assertThat(result).hasContentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON);
         assertThat(result).bodyJson().extractingPath("$.detail")
                 .isEqualTo("タスクが入っている列は消せません。先にタスクをほかの列へ移すか、消してください");
-        assertThat(columnRepository.existsById(todo)).isTrue();
+        assertThat(columnRepository.existsById(review)).isTrue();
         assertThat(taskRepository.count()).isEqualTo(1);
     }
 
     @Test
-    @DisplayName("完了の列は、タスクがいなくても消せない（409）")
-    void deleteDoneColumnIsConflict() {
-        MvcTestResult result = mvc.delete().uri("/api/columns/{id}", done).exchange();
+    @DisplayName("基本の列（やるべきこと・進行中・終わったこと）は、タスクがいなくても消せない（409）")
+    void deleteFixedColumnIsConflict() {
+        for (Long fixed : List.of(todo, doing, done)) {
+            MvcTestResult result = mvc.delete().uri("/api/columns/{id}", fixed).exchange();
 
-        assertThat(result).hasStatus(HttpStatus.CONFLICT);
-        assertThat(result).bodyJson().extractingPath("$.detail")
-                .isEqualTo("完了の列は消せません。先に別の列を完了の列にしてください");
-        assertThat(columnRepository.existsById(done)).isTrue();
+            assertThat(result).hasStatus(HttpStatus.CONFLICT);
+            assertThat(result).bodyJson().extractingPath("$.detail")
+                    .isEqualTo("基本の列（やるべきこと・進行中・終わったこと）は消せません");
+        }
+        assertThat(columnNames()).containsExactly("やるべきこと", "進行中", "終わったこと");
+    }
+
+    @Test
+    @DisplayName("完了の印の付け替え（PUT /api/columns/{id}/done）はできない。完了の列は「終わったこと」のまま")
+    void markAsDoneIsNotAvailable() {
+        // URL がないので、Spring がエラーを返す（このアプリでは 404 か 405）
+        MvcTestResult result = mvc.put().uri("/api/columns/{id}/done", doing).exchange();
+
+        assertThat(result.getResponse().getStatus()).isIn(404, 405);
+        assertThat(columnRepository.findByDoneTrue()).get()
+                .satisfies(column -> assertThat(column.getId()).isEqualTo(done));
     }
 
     @Test
     @DisplayName("ない列を消そうとすると 404 になる")
     void deleteUnknownColumnIsNotFound() {
-        BoardColumn gone = columnRepository.save(new BoardColumn("消す列", 9.0, false));
+        BoardColumn gone = columnRepository.save(new BoardColumn("消す列", 9.0, false, false));
         columnRepository.delete(gone);
 
         assertThat(mvc.delete().uri("/api/columns/{id}", gone.getId())).hasStatus(HttpStatus.NOT_FOUND);

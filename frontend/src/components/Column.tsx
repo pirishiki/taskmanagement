@@ -72,11 +72,11 @@ function Column({ column, tasks, doneColumnId, onAdd, onUpdate, onPatch, onDelet
             </option>
           ))}
         </select>
-        {/* ×：列を削除する。完了の列は消せない（○ ボタンの移し先がなくなる）ので、ボタンを出さない */}
+        {/* ×：列を削除する。基本の列（やるべきこと・進行中・終わったこと）は消せないので、ボタンを出さない */}
         {/* 列にマウスが乗っているとき、または列の中にキーボードのフォーカスがあるときだけ見せる（ホバー表示） */}
         {/* カードの ✎・× はいつも出すが、列の削除はめったに使わず、見出しをすっきりさせたいため（要件定義書 6.2） */}
         {/* opacity（透明度）で隠すので、ボタンの場所は空いたまま。見せたり隠したりしても見出しの並びがずれない */}
-        {!column.done && (
+        {!column.fixed && (
           <button
             type="button"
             onClick={handleDeleteClick}

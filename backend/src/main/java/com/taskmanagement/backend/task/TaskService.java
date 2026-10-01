@@ -26,9 +26,13 @@ import java.util.stream.Collectors;
 @Transactional
 public class TaskService {
 
-    // 古い版（version 1）のファイルの status と、読み込むときに入れる列の名前。この順に左から並べ、最後の列を完了の列にする
+    // 古い版（version 1）のファイルの status と、読み込むときに入れる列の名前。この順に左から並べる
+    // 3つとも基本の列にし、最後の列（終わったこと）を完了の列にする
     private static final List<String> V1_STATUSES = List.of("todo", "doing", "done");
     private static final List<String> V1_COLUMN_NAMES = List.of("やるべきこと", "進行中", "終わったこと");
+
+    // 基本の列（やるべきこと・進行中・終わったこと）の数。読み込むファイルにも、ちょうどこの数だけ入っている必要がある
+    private static final int FIXED_COLUMN_COUNT = 3;
 
     // 読み込むファイルに入れられるタスクの数（全部の列の合計）
     private static final int MAX_IMPORT_TASKS = 10_000;
@@ -67,6 +71,7 @@ public class TaskService {
         List<TaskFileColumn> columns = columnRepository.findAllByOrderBySortOrderAsc().stream()
                 .map(column -> new TaskFileColumn(
                         column.getName(),
+                        column.isFixed(),
                         column.isDone(),
                         taskRepository.findByColumnIdOrderBySortOrderAsc(column.getId()).stream()
                                 .map(TaskFileItem::from)
@@ -100,7 +105,8 @@ public class TaskService {
         for (int columnPosition = 0; columnPosition < columns.size(); columnPosition++) {
             TaskFileColumn fileColumn = columns.get(columnPosition);
             BoardColumn column = columnRepository.save(
-                    new BoardColumn(fileColumn.name().trim(), (double) columnPosition, fileColumn.done()));
+                    new BoardColumn(fileColumn.name().trim(), (double) columnPosition, fileColumn.fixed(),
+                            fileColumn.done()));
 
             List<TaskFileItem> items = fileColumn.tasks();
             for (int position = 0; position < items.size(); position++) {
@@ -119,10 +125,20 @@ public class TaskService {
         if (columns == null || columns.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "列の一覧（columns）に、列を1つ以上入れてください");
         }
+        long fixedCount = columns.stream().filter(TaskFileColumn::fixed).count();
+        if (fixedCount != FIXED_COLUMN_COUNT) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "基本の列（fixed が true の列）は、ちょうど"
+                    + FIXED_COLUMN_COUNT + "つにしてください（今は " + fixedCount + " 個）");
+        }
         long doneCount = columns.stream().filter(TaskFileColumn::done).count();
         if (doneCount != 1) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "完了の列（done が true の列）は、ちょうど1つにしてください（今は " + doneCount + " 個）");
+        }
+        // 完了の列は消せない列でないと、消されて ○ ボタンの移し先がなくなるため
+        boolean doneIsFixed = columns.stream().anyMatch(column -> column.done() && column.fixed());
+        if (!doneIsFixed) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "完了の列は、基本の列（fixed が true の列）にしてください");
         }
         int taskCount = columns.stream().mapToInt(column -> column.tasks().size()).sum();
         if (taskCount > MAX_IMPORT_TASKS) {
@@ -154,7 +170,7 @@ public class TaskService {
                     .map(item -> new TaskFileItem(item.text(), item.priority(), item.dueDate()))
                     .toList();
             boolean done = i == V1_STATUSES.size() - 1;
-            columns.add(new TaskFileColumn(V1_COLUMN_NAMES.get(i), done, tasks));
+            columns.add(new TaskFileColumn(V1_COLUMN_NAMES.get(i), true, done, tasks));
         }
         return columns;
     }

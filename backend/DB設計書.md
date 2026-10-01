@@ -13,6 +13,7 @@ erDiagram
         BIGINT id PK "自動採番"
         VARCHAR name "列の名前"
         DOUBLE_PRECISION sort_order "列の並び順（左から）"
+        BOOLEAN is_fixed "基本の列の印"
         BOOLEAN is_done "完了の列の印"
     }
     tasks {
@@ -29,17 +30,19 @@ erDiagram
 
 ### board_columns テーブル
 
-ボードの列1つを1行で表すテーブル。[BoardColumn.java](src/main/java/com/taskmanagement/backend/column/BoardColumn.java) のエンティティ定義に対応する。テーブルを作る SQL は [V3__create_board_columns.sql](src/main/resources/db/migration/V3__create_board_columns.sql)。
+ボードの列1つを1行で表すテーブル。[BoardColumn.java](src/main/java/com/taskmanagement/backend/column/BoardColumn.java) のエンティティ定義に対応する。テーブルを作る SQL は [V3__create_board_columns.sql](src/main/resources/db/migration/V3__create_board_columns.sql)（`is_fixed` は [V4__add_fixed_to_board_columns.sql](src/main/resources/db/migration/V4__add_fixed_to_board_columns.sql) で追加）。
 
 | カラム名 | 型 | NULL許可 | キー・制約 | 説明 |
 |---|---|---|---|---|
 | id | BIGINT | 不可 | PK（主キー、自動採番） | 列を一意に識別する番号 |
 | name | VARCHAR(255) | 不可 | NOT NULL | 列の名前（255文字まで） |
 | sort_order | DOUBLE PRECISION | 不可 | NOT NULL | 列の並び順（小さいほど左）。新しい列は「最大値＋1」（右端）。並べ替えると 0, 1, 2… と振り直す |
-| is_done | BOOLEAN | 不可 | NOT NULL、既定値 FALSE、TRUE は全体で1つまで | 「完了の列」の印。完了ボタン（○）を押したタスクは、この列へ移る |
+| is_fixed | BOOLEAN | 不可 | NOT NULL、既定値 FALSE | 「基本の列」の印。やるべきこと・進行中・終わったことの3つだけが TRUE。基本の列は消せない |
+| is_done | BOOLEAN | 不可 | NOT NULL、既定値 FALSE、TRUE は全体で1つまで | 「完了の列」の印（終わったこと）。完了ボタン（○）を押したタスクは、この列へ移る |
 
-- V3 で、今までの3つの列（やるべきこと・進行中・終わったこと）を入れ、「終わったこと」に完了の印を付けた
-- 完了の印は、アプリでは「付け替え」だけができ、外すだけの操作はない。完了の列は消せない（どちらも、○ ボタンの移し先がなくならないようにするため）。そのため、列が1つもなくなることもない
+- V3 で、今までの3つの列（やるべきこと・進行中・終わったこと）を入れ、「終わったこと」に完了の印を付けた。V4 で、この3つに基本の列の印を付けた
+- 基本の3列はカンバンの基本の流れ（未着手→作業中→完了）なので、消せない。消せるのは、あとから足した列（is_fixed が FALSE）だけ
+- 完了の列は「終わったこと」に決まっていて、アプリでは印を付け替えない。完了の列は基本の列なので消せず、○ ボタンの移し先がなくなることも、列が1つもなくなることもない
 
 ### tasks テーブル
 
@@ -84,13 +87,13 @@ text や必須のチェック（`@NotBlank`・`@Size`・`@NotNull` など）は�
 | 移動（PUT /{id}/move） | columnId | 必須（`@NotNull`）。ある列の番号（ないと400） | [MoveRequest.java](src/main/java/com/taskmanagement/backend/task/MoveRequest.java) |
 | 移動（PUT /{id}/move） | prevId | 省略可（省略すると列の一番上）。あるタスクで、移動先の列にあり、動かすタスク自身ではないこと（ないと404、それ以外は400） | 同上 |
 | 読み込み（POST /import） | version | 必須（`@NotNull`）。1 か 2（それ以外は400） | [TaskFile.java](src/main/java/com/taskmanagement/backend/task/TaskFile.java) |
-| 読み込み（POST /import、version 2） | columns | 1つ以上・100個まで。完了の列（done が true）はちょうど1つ。タスクは全部で10000件まで | 同上、TaskService |
+| 読み込み（POST /import、version 2） | columns | 1つ以上・100個まで。基本の列（fixed が true）はちょうど3つ。完了の列（done が true）はちょうど1つで、基本の列のどれか。タスクは全部で10000件まで | 同上、TaskService |
 | 読み込み（POST /import、version 2） | columns[].name・tasks | name は必須・空白だけ不可・255文字まで。tasks は必須 | [TaskFileColumn.java](src/main/java/com/taskmanagement/backend/task/TaskFileColumn.java) |
 | 読み込み（POST /import、version 2） | columns[].tasks[].text・priority | text は必須・空白だけ不可・255文字まで。priority は必須（決められた値のどれか） | [TaskFileItem.java](src/main/java/com/taskmanagement/backend/task/TaskFileItem.java) |
 | 読み込み（POST /import、version 1） | tasks[]（text・status・priority・sortOrder） | 必須。status は todo / doing / done のどれか（それ以外は400） | [TaskFileV1Item.java](src/main/java/com/taskmanagement/backend/task/TaskFileV1Item.java)、TaskService |
 | 列を作る・名前を変える | name | 必須。空白だけは不可（`@NotBlank`）。255文字まで（`@Size`） | [BoardColumnRequest.java](src/main/java/com/taskmanagement/backend/column/BoardColumnRequest.java) |
 | 列を並べ替える | orderedIds | 全部の列の ID を1回ずつ（足りない・知らない・重なっていると400） | [BoardColumnService.java](src/main/java/com/taskmanagement/backend/column/BoardColumnService.java) |
-| 列を消す | id | 完了の列・タスクが入っている列は消せない（409） | 同上 |
+| 列を消す | id | 基本の列（is_fixed が TRUE）・タスクが入っている列は消せない（409） | 同上 |
 
 違反した場合は `400 Bad Request`（列の削除は `409 Conflict`）が返り、DBには何も書き込まれない。DBの制約が「最低限の防波堤」、アプリ側のバリデーションが「実用的な入力チェック（空文字・長さ・決められた値も防ぎ、わかりやすい理由を返す）」という役割分担になっている。
 
@@ -108,13 +111,14 @@ text や必須のチェック（`@NotBlank`・`@Size`・`@NotNull` など）は�
 | `V1__create_tasks_table.sql` | tasks テーブルとインデックス `idx_tasks_status_sort_order` を作る（Flyway を入れる前に Hibernate が自動で作っていた形と同じ） |
 | `V2__sort_order_to_double.sql` | `sort_order` を INTEGER から DOUBLE PRECISION（小数）に変える。今の整数の値はそのまま小数になる。検索・絞り込み中の並び替えで、2件の間に入れられるようにするため（イシュー #35） |
 | `V3__create_board_columns.sql` | 列を自由に追加・削除できるようにする（イシュー #38）。board_columns テーブルを作って今までの3列を入れ、tasks の `status` を `column_id`（外部キー）に置き換える。今あるタスクは、status から対応する列の番号を書き写すので、消えない。インデックスも `idx_tasks_column_id_sort_order` に作り直す |
+| `V4__add_fixed_to_board_columns.sql` | board_columns に「基本の列」の印 `is_fixed` を足し、やるべきこと・進行中・終わったことに付ける。基本の3列を消せないようにするため（イシュー #38。要件定義書 No.13 は「基本の3列『以外の』列を自由に作れる」こと） |
 
 - Hibernate はテーブルを作ったり直したりしない（`spring.jpa.hibernate.ddl-auto=validate`）。起動時にエンティティとテーブルが合っているかを確かめ、合わなければ起動を止める
 - Flyway を入れる前から使っていたデータ入りの DB は、`spring.flyway.baseline-on-migrate=true` により「V1 まで済み」（`BASELINE`）と記録され、V1 は流れない（データはそのまま）。空の DB（テスト・新しい環境）では V1 から流れる
 
 ### テーブルを変えるときの手順
 
-1. 新しい番号の SQL ファイルを足す（例：`V4__add_memo_column.sql` に `ALTER TABLE tasks ADD COLUMN memo VARCHAR(255);`）
+1. 新しい番号の SQL ファイルを足す（例：`V5__add_memo_column.sql` に `ALTER TABLE tasks ADD COLUMN memo VARCHAR(255);`）
 2. エンティティ（[Task.java](src/main/java/com/taskmanagement/backend/task/Task.java) など）を、変えたあとのテーブルに合わせる
 3. このファイルの ER 図とテーブル定義を直す
 

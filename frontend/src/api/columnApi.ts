@@ -20,7 +20,7 @@ export async function createColumn(name: string): Promise<BoardColumn> {
 }
 
 // 列を消す。返ってくる中身はない（204）
-// 中にタスクがいる列・完了の列は消せない（409 の ApiError になる。理由は error.message に入っている）
+// 基本の列・中にタスクがいる列は消せない（409 の ApiError になる。理由は error.message に入っている）
 export async function deleteColumn(id: number): Promise<void> {
   await request(`/api/columns/${id}`, { method: 'DELETE' })
 }

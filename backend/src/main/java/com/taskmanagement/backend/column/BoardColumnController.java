@@ -57,14 +57,8 @@ public class BoardColumnController {
         return BoardColumnResponse.from(columnService.renameColumn(id, request.name()));
     }
 
-    // 例：PUT /api/columns/2/done → 列2を「完了の列」にする（今までの完了の列からは印が外れる）。送る中身はない
-    @PutMapping("/{id}/done")
-    public BoardColumnResponse markAsDone(@PathVariable Long id) {
-        return BoardColumnResponse.from(columnService.markAsDone(id));
-    }
-
     // 例：DELETE /api/columns/4 → 列4を消す。成功したら 204（中身なし）
-    // 中にタスクがいる列・完了の列は消せない（409）
+    // 基本の列（やるべきこと・進行中・終わったこと）・中にタスクがいる列は消せない（409）
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteColumn(@PathVariable Long id) {
         columnService.deleteColumn(id);
