@@ -24,10 +24,10 @@ public class Task {
     @Column(nullable = false)
     private String text;
 
-    // DB には小文字（"todo" など）で保存する。変換は TaskStatusConverter が受け持つ
+    // どの列にいるか（列の番号。board_columns テーブルの id）
+    // 番号が本当にある列かどうかは、DB の外部キーが確かめる
     @Column(nullable = false)
-    @Convert(converter = TaskStatusConverter.class)
-    private TaskStatus status;
+    private Long columnId;
 
     // DB には小文字（"high" など）で保存する。変換は TaskPriorityConverter が受け持つ
     @Column(nullable = false)
@@ -44,9 +44,9 @@ public class Task {
         // JPA（Hibernate）が DB から読んだ行を Task に詰めるときに使う。アプリのコードからは呼ばない
     }
 
-    public Task(String text, TaskStatus status, TaskPriority priority, LocalDate dueDate, Double sortOrder) {
+    public Task(String text, Long columnId, TaskPriority priority, LocalDate dueDate, Double sortOrder) {
         this.text = text;
-        this.status = status;
+        this.columnId = columnId;
         this.priority = priority;
         this.dueDate = dueDate;
         this.sortOrder = sortOrder;
@@ -64,12 +64,12 @@ public class Task {
         this.text = text;
     }
 
-    public TaskStatus getStatus() {
-        return status;
+    public Long getColumnId() {
+        return columnId;
     }
 
-    public void setStatus(TaskStatus status) {
-        this.status = status;
+    public void setColumnId(Long columnId) {
+        this.columnId = columnId;
     }
 
     public TaskPriority getPriority() {

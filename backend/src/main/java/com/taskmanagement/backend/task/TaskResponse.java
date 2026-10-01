@@ -8,7 +8,7 @@ import java.time.LocalDate;
 public record TaskResponse(
         Long id,
         String text,
-        TaskStatus status,
+        Long columnId,
         TaskPriority priority,
         LocalDate dueDate,
         Double sortOrder) {
@@ -18,7 +18,7 @@ public record TaskResponse(
         return new TaskResponse(
                 task.getId(),
                 task.getText(),
-                task.getStatus(),
+                task.getColumnId(),
                 task.getPriority(),
                 task.getDueDate(),
                 task.getSortOrder());

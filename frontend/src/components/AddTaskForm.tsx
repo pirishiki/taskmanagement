@@ -9,8 +9,8 @@ const priorityOptions: { value: Task['priority']; label: string }[] = [
 ]
 
 type Props = {
-  // status（どの列か）は Column が決めるので、ここでは受け取らない
-  onAdd: (task: Omit<NewTask, 'status'>) => void
+  // columnId（どの列か）は Column が決めるので、ここでは受け取らない
+  onAdd: (task: Omit<NewTask, 'columnId'>) => void
 }
 
 function AddTaskForm({ onAdd }: Props) {

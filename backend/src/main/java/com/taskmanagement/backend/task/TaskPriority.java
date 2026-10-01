@@ -4,7 +4,7 @@ import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;
 
 // タスクの優先度。この3つ以外の値は作れない
-// Java の中では HIGH のように大文字で書き、JSON と DB では今までどおり "high" のように小文字で表す（TaskStatus と同じ作り）
+// Java の中では HIGH のように大文字で書き、JSON と DB では今までどおり "high" のように小文字で表す
 public enum TaskPriority {
     HIGH("high"),
     MEDIUM("medium"),

@@ -22,8 +22,8 @@ export class ApiError extends Error {
   }
 }
 
-// fetch でバックエンドを呼び、失敗したら ApiError を投げる。どの API もこれを通す
-async function request(url: string, init?: RequestInit): Promise<Response> {
+// fetch でバックエンドを呼び、失敗したら ApiError を投げる。どの API もこれを通す（列の API の columnApi.ts も使う）
+export async function request(url: string, init?: RequestInit): Promise<Response> {
   let response: Response
   try {
     response = await fetch(url, init)
@@ -45,7 +45,7 @@ async function request(url: string, init?: RequestInit): Promise<Response> {
 }
 
 // JSON を送るときの共通の設定
-const jsonHeaders = { 'Content-Type': 'application/json' }
+export const jsonHeaders = { 'Content-Type': 'application/json' }
 
 // タスクを取得する。filters を渡すと、その条件を全部満たすものだけが返る（渡さなければ全件）
 // 例：{ keyword: '', priorities: ['high', 'medium'], due: 'overdue' } → /api/tasks?priority=high&priority=medium&due=overdue
@@ -106,25 +106,25 @@ export async function deleteTask(id: number): Promise<void> {
   }
 }
 
-// ドラッグ＆ドロップ用：カード（id）を、status の列の、prevId のカードのすぐ下に入れる
+// ドラッグ＆ドロップ用：カード（id）を、columnId の列の、prevId のカードのすぐ下に入れる
 // prevId は、落とした位置のすぐ上に見えているカードの ID。一番上に落としたときは null
 // 番号はサーバーが決める（見えていないカードも含めて、上のカードとすぐ下のカードの真ん中）。動かしたあとのタスクが返る
-export async function moveTask(id: number, status: Task['status'], prevId: number | null): Promise<Task> {
+export async function moveTask(id: number, columnId: number, prevId: number | null): Promise<Task> {
   const response = await request(`/api/tasks/${id}/move`, {
     method: 'PUT',
     headers: jsonHeaders,
-    body: JSON.stringify({ status, prevId }),
+    body: JSON.stringify({ columnId, prevId }),
   })
   return response.json()
 }
 
 // 自動並び替え（優先度順・期限が近い順）用：1つの列の中で、orderedIds のカードどうしの席（番号）を入れ替える
 // 送らなかったカード（絞り込みで見えていないカード）の番号は変わらない。返ってくる中身はない（204）
-export async function reorderTasks(status: Task['status'], orderedIds: number[]): Promise<void> {
+export async function reorderTasks(columnId: number, orderedIds: number[]): Promise<void> {
   await request('/api/tasks/reorder', {
     method: 'PUT',
     headers: jsonHeaders,
-    body: JSON.stringify({ status, orderedIds }),
+    body: JSON.stringify({ columnId, orderedIds }),
   })
 }
 

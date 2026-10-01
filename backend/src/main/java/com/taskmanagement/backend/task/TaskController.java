@@ -102,7 +102,7 @@ public class TaskController {
         return ResponseEntity.noContent().build();
     }
 
-    // 例：PUT /api/tasks/5/move  { "status": "doing", "prevId": 3 } → タスク5を「進行中」の列の、タスク3のすぐ下に入れる
+    // 例：PUT /api/tasks/5/move  { "columnId": 2, "prevId": 3 } → タスク5を列2の、タスク3のすぐ下に入れる
     // 返事は、動かしたあとのタスク（新しい列と番号が入っている）
     @PutMapping("/{id}/move")
     public TaskResponse moveTask(@PathVariable Long id, @Valid @RequestBody MoveRequest request) {

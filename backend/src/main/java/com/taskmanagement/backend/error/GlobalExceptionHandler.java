@@ -43,12 +43,12 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return handleExceptionInternal(ex, problem, headers, status, request);
     }
 
-    // JSON が読めない：形が崩れている、status・priority に決まっていない値が入っている など（400）
+    // JSON が読めない：形が崩れている、priority に決まっていない値が入っている、columnId が数字でない など（400）
     @Override
     protected ResponseEntity<Object> handleHttpMessageNotReadable(
             HttpMessageNotReadableException ex, HttpHeaders headers, HttpStatusCode status, WebRequest request) {
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(status,
-                "送られてきた内容を読み取れませんでした。status は todo・doing・done、priority は high・medium・low のどれかを送ってください");
+                "送られてきた内容を読み取れませんでした。columnId は列の番号（数字）、priority は high・medium・low のどれかを送ってください");
         return handleExceptionInternal(ex, problem, headers, status, request);
     }
 
