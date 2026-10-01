@@ -44,7 +44,9 @@ function Column({ column, tasks, doneColumnId, onAdd, onUpdate, onPatch, onDelet
   const { setNodeRef } = useDroppable({ id: `${droppableIdPrefix}${column.id}` })
 
   return (
-    <section className="w-72 shrink-0 rounded-md bg-[#ebecf0] p-3">
+    // group/column：中の部品が「この列にマウスが乗っているか・フォーカスがあるか」で見た目を変えられるようにする目印
+    // （カードにも group が付いているので、名前（/column）を付けて区別する）
+    <section className="group/column w-72 shrink-0 rounded-md bg-[#ebecf0] p-3">
       <div className="mb-3 flex items-center justify-between gap-2">
         {/* min-w-0 と break-words：長い名前でも、列の幅からはみ出さずに折り返す */}
         <h2 className="min-w-0 flex-1 font-bold break-words text-gray-700">{column.name}</h2>
@@ -71,13 +73,16 @@ function Column({ column, tasks, doneColumnId, onAdd, onUpdate, onPatch, onDelet
           ))}
         </select>
         {/* ×：列を削除する。完了の列は消せない（○ ボタンの移し先がなくなる）ので、ボタンを出さない */}
+        {/* 列にマウスが乗っているとき、または列の中にキーボードのフォーカスがあるときだけ見せる（ホバー表示） */}
+        {/* カードの ✎・× はいつも出すが、列の削除はめったに使わず、見出しをすっきりさせたいため（要件定義書 6.2） */}
+        {/* opacity（透明度）で隠すので、ボタンの場所は空いたまま。見せたり隠したりしても見出しの並びがずれない */}
         {!column.done && (
           <button
             type="button"
             onClick={handleDeleteClick}
             aria-label={`列「${column.name}」を削除`}
             title="列を削除"
-            className="shrink-0 rounded px-1 text-gray-400 hover:bg-gray-300/60 hover:text-[#eb5a46]"
+            className="shrink-0 rounded px-1 text-gray-400 opacity-0 group-focus-within/column:opacity-100 group-hover/column:opacity-100 hover:bg-gray-300/60 hover:text-[#eb5a46] focus-visible:opacity-100"
           >
             ×
           </button>
