@@ -3,7 +3,7 @@ package com.taskmanagement.backend.task;
 import jakarta.persistence.AttributeConverter;
 import jakarta.persistence.Converter;
 
-// TaskPriority と DB の文字の変換係。DB には今までどおり "high" のような小文字で保存する（TaskStatusConverter と同じ作り）
+// TaskPriority と DB の文字の変換係。DB には今までどおり "high" のような小文字で保存する
 @Converter
 public class TaskPriorityConverter implements AttributeConverter<TaskPriority, String> {
 

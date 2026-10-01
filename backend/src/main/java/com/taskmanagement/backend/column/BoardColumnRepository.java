@@ -14,6 +14,9 @@ public interface BoardColumnRepository extends JpaRepository<BoardColumn, Long> 
     // 並び順が一番大きい（一番右の）列を1つだけ取る。新しい列を右端に足すときに使う。列が1つもなければ空の Optional
     Optional<BoardColumn> findTopByOrderBySortOrderDesc();
 
+    // 並び順が一番小さい（一番左の）列を1つだけ取る。列を指定せずにタスクを作ったときの置き場所。列が1つもなければ空の Optional
+    Optional<BoardColumn> findTopByOrderBySortOrderAsc();
+
     // 「完了の列」の印がついた列を取る。印がついた列がなければ空の Optional
     Optional<BoardColumn> findByDoneTrue();
 }

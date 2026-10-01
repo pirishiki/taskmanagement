@@ -1,5 +1,6 @@
 package com.taskmanagement.backend.column;
 
+import com.taskmanagement.backend.task.TaskRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -11,8 +12,7 @@ import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
-// 列のルールをまとめる係（作る・名前を変える・完了の列を決める・並べ替える）
-// 列を消す処理は、タスクの側を列の番号に直してから足す（中にタスクがあるかを確かめる必要があるため）
+// 列のルールをまとめる係（作る・名前を変える・完了の列を決める・並べ替える・消す）
 // @Transactional：メソッドの中の DB 操作を「ひとまとまり」にする。途中で失敗したら、そのメソッドでした変更を全部取り消す
 @Service
 @Transactional
@@ -20,8 +20,12 @@ public class BoardColumnService {
 
     private final BoardColumnRepository columnRepository;
 
-    public BoardColumnService(BoardColumnRepository columnRepository) {
+    // 列を消す前に、中にタスクがいるかを確かめるために使う
+    private final TaskRepository taskRepository;
+
+    public BoardColumnService(BoardColumnRepository columnRepository, TaskRepository taskRepository) {
         this.columnRepository = columnRepository;
+        this.taskRepository = taskRepository;
     }
 
     // 全部の列を、左から順に返す
@@ -83,6 +87,24 @@ public class BoardColumnService {
             ordered.get(position).setSortOrder((double) position);
         }
         return columnRepository.saveAll(ordered);
+    }
+
+    // 列を消す。列がなければ 404
+    // 次の列は消せない（409：今のボードの状態と合わないので、できない）
+    // ・中にタスクがいる列：うっかりタスクを失わないように。先にタスクをほかの列へ移すか、消してもらう
+    // ・完了の列：消すと、完了ボタン（○）の移し先がなくなる。先に別の列を完了の列にしてもらう
+    // （完了の列は消せないので、列が1つもなくなることもない）
+    public void deleteColumn(Long id) {
+        BoardColumn column = findOrThrow(id);
+        if (column.isDone()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "完了の列は消せません。先に別の列を完了の列にしてください");
+        }
+        if (taskRepository.existsByColumnId(id)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "タスクが入っている列は消せません。先にタスクをほかの列へ移すか、消してください");
+        }
+        columnRepository.delete(column);
     }
 
     // 列を取ってくる。なければ 404

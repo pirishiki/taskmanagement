@@ -3,6 +3,7 @@ package com.taskmanagement.backend.column;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -60,5 +61,13 @@ public class BoardColumnController {
     @PutMapping("/{id}/done")
     public BoardColumnResponse markAsDone(@PathVariable Long id) {
         return BoardColumnResponse.from(columnService.markAsDone(id));
+    }
+
+    // 例：DELETE /api/columns/4 → 列4を消す。成功したら 204（中身なし）
+    // 中にタスクがいる列・完了の列は消せない（409）
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deleteColumn(@PathVariable Long id) {
+        columnService.deleteColumn(id);
+        return ResponseEntity.noContent().build();
     }
 }

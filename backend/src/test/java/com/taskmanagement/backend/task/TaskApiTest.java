@@ -1,6 +1,8 @@
 package com.taskmanagement.backend.task;
 
 import com.taskmanagement.backend.TestcontainersConfiguration;
+import com.taskmanagement.backend.column.BoardColumn;
+import com.taskmanagement.backend.column.BoardColumnRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -34,14 +36,28 @@ class TaskApiTest {
     @Autowired
     private TaskRepository taskRepository;
 
-    // テストごとに DB を空にする（前のテストで登録したタスクが、次のテストに混ざらないように）
+    @Autowired
+    private BoardColumnRepository columnRepository;
+
+    // テストで使う3つの列の番号（id）。テストごとに作り直すので、毎回変わる
+    private Long todo;
+    private Long doing;
+    private Long done;
+
+    // テストごとに DB を、「やるべきこと／進行中／終わったこと」の3列だけで、タスクが1件もない状態にする
+    // （前のテストで登録したタスクや、読み込みで作り直した列が、次のテストに混ざらないように）
+    // タスクが列を指しているので（外部キー）、タスクを先に消す
     @BeforeEach
-    void deleteAllTasks() {
+    void resetBoard() {
         taskRepository.deleteAll();
+        columnRepository.deleteAll();
+        todo = columnRepository.save(new BoardColumn("やるべきこと", 0.0, false)).getId();
+        doing = columnRepository.save(new BoardColumn("進行中", 1.0, false)).getId();
+        done = columnRepository.save(new BoardColumn("終わったこと", 2.0, true)).getId();
     }
 
     @Test
-    @DisplayName("status と priority を省略して登録すると、todo・medium になり、JSON は小文字で返る")
+    @DisplayName("columnId と priority を省略して登録すると、一番左の列・medium になり、JSON は小文字で返る")
     void createWithDefaults() {
         // 準備と実行：タスク名だけを送って登録する
         MvcTestResult result = mvc.post().uri("/api/tasks")
@@ -54,7 +70,7 @@ class TaskApiTest {
         // 確かめる：201 が返り、省略した項目が既定値になっている
         assertThat(result).hasStatus(HttpStatus.CREATED);
         assertThat(result).bodyJson().extractingPath("$.text").isEqualTo("牛乳を買う");
-        assertThat(result).bodyJson().extractingPath("$.status").isEqualTo("todo");
+        assertThat(result).bodyJson().extractingPath("$.columnId").isEqualTo(todo.intValue());
         assertThat(result).bodyJson().extractingPath("$.priority").isEqualTo("medium");
     }
 
@@ -62,17 +78,17 @@ class TaskApiTest {
     @DisplayName("削除で並び順に隙間ができても、新しいタスクは列の一番下（最大値＋1）に入る")
     void newTaskGoesToBottomEvenAfterDelete() {
         // 準備：同じ列に 0・1・2 番の3件を作り、0 番を削除して、1・2 番だけが残る状態にする
-        Task first = saveTask("1件目", TaskStatus.TODO, 0);
-        saveTask("2件目", TaskStatus.TODO, 1);
-        saveTask("3件目", TaskStatus.TODO, 2);
+        Task first = saveTask("1件目", todo, 0);
+        saveTask("2件目", todo, 1);
+        saveTask("3件目", todo, 2);
         assertThat(mvc.delete().uri("/api/tasks/{id}", first.getId())).hasStatus(HttpStatus.NO_CONTENT);
 
         // 実行：同じ列に新しいタスクを登録する
         MvcTestResult result = mvc.post().uri("/api/tasks")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
-                        {"text": "4件目", "status": "todo"}
-                        """)
+                        {"text": "4件目", "columnId": %d}
+                        """.formatted(todo))
                 .exchange();
 
         // 確かめる：件数（2）ではなく、最大値（2）＋1 の 3 番になる（件数で決めていたころは 2 番になり、3件目と重なっていた）
@@ -80,26 +96,47 @@ class TaskApiTest {
         assertThat(result).bodyJson().extractingPath("$.sortOrder").isEqualTo(3.0);
     }
 
+    @Test
+    @DisplayName("PATCH で完了の列の番号を送ると、そのタスクは完了の列の一番下に移る")
+    void patchMovesTaskToDoneColumn() {
+        // 準備：「終わったこと」に1件、「やるべきこと」に完了させるタスク
+        saveTask("前に終わったタスク", done, 0);
+        Task task = saveTask("牛乳を買う", todo, 0);
+
+        // 実行：完了ボタン（○）と同じ頼み方
+        MvcTestResult result = mvc.patch().uri("/api/tasks/{id}", task.getId())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"columnId": %d}
+                        """.formatted(done))
+                .exchange();
+
+        // 確かめる：「終わったこと」の一番下に入っている
+        assertThat(result).hasStatus(HttpStatus.OK);
+        assertThat(result).bodyJson().extractingPath("$.columnId").isEqualTo(done.intValue());
+        assertThat(textsIn(done)).containsExactly("前に終わったタスク", "牛乳を買う");
+    }
+
     // ここから下は、並び替え（move・reorder）のテスト
     // 絞り込み中を思い浮かべて、「画面に見えているカード」と「見えていないカード」を混ぜて準備する
 
-    // 並び替えのテスト用に、列（status）と番号（sortOrder）を決めてタスクを1件作る
-    private Task saveTask(String text, TaskStatus status, double sortOrder) {
-        return taskRepository.save(new Task(text, status, TaskPriority.MEDIUM, null, sortOrder));
+    // 列（columnId）と番号（sortOrder）を決めてタスクを1件作る
+    private Task saveTask(String text, Long columnId, double sortOrder) {
+        return taskRepository.save(new Task(text, columnId, TaskPriority.MEDIUM, null, sortOrder));
     }
 
     // その列のタスク名を、上から順に並べて返す（DB の本当の並び）
-    private List<String> textsIn(TaskStatus status) {
-        return taskRepository.findByStatusOrderBySortOrderAsc(status).stream().map(Task::getText).toList();
+    private List<String> textsIn(Long columnId) {
+        return taskRepository.findByColumnIdOrderBySortOrderAsc(columnId).stream().map(Task::getText).toList();
     }
 
     // PUT /api/tasks/{id}/move を呼ぶ。prevId が null なら、列の一番上に入れる頼みになる
-    private MvcTestResult move(Long id, String status, Long prevId) {
+    private MvcTestResult move(Long id, Long columnId, Long prevId) {
         return mvc.put().uri("/api/tasks/{id}/move", id)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
-                        {"status": "%s", "prevId": %s}
-                        """.formatted(status, prevId))
+                        {"columnId": %s, "prevId": %s}
+                        """.formatted(columnId, prevId))
                 .exchange();
     }
 
@@ -108,64 +145,64 @@ class TaskApiTest {
     void moveGoesBetweenPrevAndHiddenNext() {
         // 準備：「やるべきこと」に A(0)・B(1)・C(2)。絞り込みで A と C だけが見えているとする
         // 「進行中」の D を、画面で A のすぐ下に落とす
-        Task a = saveTask("A", TaskStatus.TODO, 0);
-        saveTask("B", TaskStatus.TODO, 1);
-        saveTask("C", TaskStatus.TODO, 2);
-        Task d = saveTask("D", TaskStatus.DOING, 0);
+        Task a = saveTask("A", todo, 0);
+        saveTask("B", todo, 1);
+        saveTask("C", todo, 2);
+        Task d = saveTask("D", doing, 0);
 
-        MvcTestResult result = move(d.getId(), "todo", a.getId());
+        MvcTestResult result = move(d.getId(), todo, a.getId());
 
         // 確かめる：D は A(0) と、DB で本当にすぐ下の B(1) の真ん中 0.5 に入る。見えていない B と C の順番はそのまま
         assertThat(result).hasStatus(HttpStatus.OK);
-        assertThat(result).bodyJson().extractingPath("$.status").isEqualTo("todo");
+        assertThat(result).bodyJson().extractingPath("$.columnId").isEqualTo(todo.intValue());
         assertThat(result).bodyJson().extractingPath("$.sortOrder").isEqualTo(0.5);
-        assertThat(textsIn(TaskStatus.TODO)).containsExactly("A", "D", "B", "C");
+        assertThat(textsIn(todo)).containsExactly("A", "D", "B", "C");
     }
 
     @Test
     @DisplayName("move で prevId を省くと列の一番上、一番下のカードを prevId にすると列の一番下に入る")
     void moveToTopAndBottom() {
         // 準備：A(0)・B(1)・C(2)
-        saveTask("A", TaskStatus.TODO, 0);
-        Task b = saveTask("B", TaskStatus.TODO, 1);
-        Task c = saveTask("C", TaskStatus.TODO, 2);
+        saveTask("A", todo, 0);
+        Task b = saveTask("B", todo, 1);
+        Task c = saveTask("C", todo, 2);
 
         // 実行と確かめる：C を一番上へ（一番上の A より 1 小さい -1）
-        assertThat(move(c.getId(), "todo", null)).bodyJson().extractingPath("$.sortOrder").isEqualTo(-1.0);
-        assertThat(textsIn(TaskStatus.TODO)).containsExactly("C", "A", "B");
+        assertThat(move(c.getId(), todo, null)).bodyJson().extractingPath("$.sortOrder").isEqualTo(-1.0);
+        assertThat(textsIn(todo)).containsExactly("C", "A", "B");
 
         // 実行と確かめる：C を B（一番下）のすぐ下へ（B より 1 大きい 2）
-        assertThat(move(c.getId(), "todo", b.getId())).bodyJson().extractingPath("$.sortOrder").isEqualTo(2.0);
-        assertThat(textsIn(TaskStatus.TODO)).containsExactly("A", "B", "C");
+        assertThat(move(c.getId(), todo, b.getId())).bodyJson().extractingPath("$.sortOrder").isEqualTo(2.0);
+        assertThat(textsIn(todo)).containsExactly("A", "B", "C");
     }
 
     @Test
     @DisplayName("move で番号のすき間がなくなっていたら、列を 0・1・2… と振り直してから真ん中に入れる")
     void moveRenumbersWhenNoGapIsLeft() {
         // 準備：A と B の番号を、間に小数を作れないほど近くする（Math.nextUp(1.0) は「1 のすぐ次の小数」）
-        Task a = saveTask("A", TaskStatus.TODO, 1);
-        saveTask("B", TaskStatus.TODO, Math.nextUp(1.0));
-        Task d = saveTask("D", TaskStatus.DOING, 0);
+        Task a = saveTask("A", todo, 1);
+        saveTask("B", todo, Math.nextUp(1.0));
+        Task d = saveTask("D", doing, 0);
 
-        MvcTestResult result = move(d.getId(), "todo", a.getId());
+        MvcTestResult result = move(d.getId(), todo, a.getId());
 
         // 確かめる：A=0・B=1 に振り直されたあと、D はその真ん中の 0.5 に入る
         assertThat(result).bodyJson().extractingPath("$.sortOrder").isEqualTo(0.5);
-        assertThat(textsIn(TaskStatus.TODO)).containsExactly("A", "D", "B");
+        assertThat(textsIn(todo)).containsExactly("A", "D", "B");
     }
 
     @Test
     @DisplayName("move で、動かすカードか prevId のカードがなければ 404、prevId が別の列にあれば 400 になる")
     void moveWithWrongIdsIsError() {
-        Task a = saveTask("A", TaskStatus.TODO, 0);
-        Task b = saveTask("B", TaskStatus.DOING, 0);
-        Task gone = saveTask("消すタスク", TaskStatus.TODO, 1);
+        Task a = saveTask("A", todo, 0);
+        Task b = saveTask("B", doing, 0);
+        Task gone = saveTask("消すタスク", todo, 1);
         taskRepository.delete(gone);
 
-        assertThat(move(gone.getId(), "todo", a.getId())).hasStatus(HttpStatus.NOT_FOUND);
-        assertThat(move(b.getId(), "todo", gone.getId())).hasStatus(HttpStatus.NOT_FOUND);
+        assertThat(move(gone.getId(), todo, a.getId())).hasStatus(HttpStatus.NOT_FOUND);
+        assertThat(move(b.getId(), todo, gone.getId())).hasStatus(HttpStatus.NOT_FOUND);
 
-        MvcTestResult otherColumn = move(b.getId(), "done", a.getId()); // A は「やるべきこと」にある
+        MvcTestResult otherColumn = move(b.getId(), done, a.getId()); // A は「やるべきこと」にある
         assertThat(otherColumn).hasStatus(HttpStatus.BAD_REQUEST);
         assertThat(otherColumn).hasContentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON);
         assertThat(otherColumn).bodyJson().extractingPath("$.detail").isEqualTo("上のカード（prevId）が、移動先の列にありません");
@@ -175,17 +212,17 @@ class TaskApiTest {
     @DisplayName("reorder は、送ったカードどうしで席（番号）を入れ替え、送らなかったカードの番号は変えない")
     void reorderSwapsSeatsOfSentTasksOnly() {
         // 準備：A(0)・B(1)・C(2)・D(3)。絞り込みで B と D だけが見えているとする
-        saveTask("A", TaskStatus.TODO, 0);
-        Task b = saveTask("B", TaskStatus.TODO, 1);
-        saveTask("C", TaskStatus.TODO, 2);
-        Task d = saveTask("D", TaskStatus.TODO, 3);
+        saveTask("A", todo, 0);
+        Task b = saveTask("B", todo, 1);
+        saveTask("C", todo, 2);
+        Task d = saveTask("D", todo, 3);
 
         // 実行：見えている2枚を D・B の順にする
         MvcTestResult result = mvc.put().uri("/api/tasks/reorder")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
-                        {"status": "todo", "orderedIds": [%d, %d]}
-                        """.formatted(d.getId(), b.getId()))
+                        {"columnId": %d, "orderedIds": [%d, %d]}
+                        """.formatted(todo, d.getId(), b.getId()))
                 .exchange();
 
         // 確かめる：B と D が座っていた席（1 と 3）を D・B の順に使う。A(0) と C(2) はそのまま
@@ -194,34 +231,34 @@ class TaskApiTest {
                 .satisfies(task -> assertThat(task.getSortOrder()).isEqualTo(1.0));
         assertThat(taskRepository.findById(b.getId())).get()
                 .satisfies(task -> assertThat(task.getSortOrder()).isEqualTo(3.0));
-        assertThat(textsIn(TaskStatus.TODO)).containsExactly("A", "D", "C", "B");
+        assertThat(textsIn(todo)).containsExactly("A", "D", "C", "B");
     }
 
     @Test
     @DisplayName("reorder に別の列のカードが混じっていると 400 になり、どのカードの番号も変わらない")
     void reorderWithOtherColumnIsBadRequest() {
-        Task a = saveTask("A", TaskStatus.TODO, 0);
-        Task b = saveTask("B", TaskStatus.DOING, 5);
+        Task a = saveTask("A", todo, 0);
+        Task b = saveTask("B", doing, 5);
 
         MvcTestResult result = mvc.put().uri("/api/tasks/reorder")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
-                        {"status": "todo", "orderedIds": [%d, %d]}
-                        """.formatted(b.getId(), a.getId()))
+                        {"columnId": %d, "orderedIds": [%d, %d]}
+                        """.formatted(todo, b.getId(), a.getId()))
                 .exchange();
 
         assertThat(result).hasStatus(HttpStatus.BAD_REQUEST);
         assertThat(taskRepository.findById(a.getId())).get()
                 .satisfies(task -> assertThat(task.getSortOrder()).isZero());
         assertThat(taskRepository.findById(b.getId())).get()
-                .satisfies(task -> assertThat(task.getStatus()).isEqualTo(TaskStatus.DOING));
+                .satisfies(task -> assertThat(task.getColumnId()).isEqualTo(doing));
     }
 
     @Test
     @DisplayName("削除すると 204 が返り、そのあと取得しようとすると 404 になる")
     void deleteThenNotFound() {
         // 準備
-        Task task = saveTask("消すタスク", TaskStatus.TODO, 0);
+        Task task = saveTask("消すタスク", todo, 0);
 
         // 実行と確かめる：削除は 204、同じ id を取得すると 404
         assertThat(mvc.delete().uri("/api/tasks/{id}", task.getId())).hasStatus(HttpStatus.NO_CONTENT);
@@ -233,7 +270,7 @@ class TaskApiTest {
 
     // 絞り込みのテスト用に、「やるべきこと」の列にタスクを1件作る
     private void saveTask(String text, TaskPriority priority, LocalDate dueDate) {
-        taskRepository.save(new Task(text, TaskStatus.TODO, priority, dueDate, 0.0));
+        taskRepository.save(new Task(text, todo, priority, dueDate, 0.0));
     }
 
     @Test
@@ -344,17 +381,22 @@ class TaskApiTest {
     }
 
     @Test
-    @DisplayName("status に決まっていない値（abc）を送ると 400 になる")
-    void createWithUnknownStatusIsBadRequest() {
+    @DisplayName("ない列の番号（columnId）を送ると 400 になり、detail に理由が入る。DB には登録されない")
+    void createWithUnknownColumnIsBadRequest() {
+        // 準備：一度作って消した列の番号を使う（その番号の列は確実に存在しない）
+        BoardColumn gone = columnRepository.save(new BoardColumn("消す列", 9.0, false));
+        columnRepository.delete(gone);
+
         MvcTestResult result = mvc.post().uri("/api/tasks")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
-                        {"text": "牛乳を買う", "status": "abc"}
-                        """)
+                        {"text": "牛乳を買う", "columnId": %d}
+                        """.formatted(gone.getId()))
                 .exchange();
 
         assertThat(result).hasStatus(HttpStatus.BAD_REQUEST);
         assertThat(result).hasContentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON);
+        assertThat(result).bodyJson().extractingPath("$.detail").isEqualTo("id が " + gone.getId() + " の列はありません");
         assertThat(taskRepository.count()).isZero();
     }
 
@@ -371,8 +413,8 @@ class TaskApiTest {
     }
 
     @Test
-    @DisplayName("並び替えで status を送らないと 400 になり、errors に理由が入る")
-    void reorderWithoutStatusIsBadRequest() {
+    @DisplayName("並び替えで columnId を送らないと 400 になり、errors に理由が入る")
+    void reorderWithoutColumnIsBadRequest() {
         MvcTestResult result = mvc.put().uri("/api/tasks/reorder")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -381,14 +423,14 @@ class TaskApiTest {
                 .exchange();
 
         assertThat(result).hasStatus(HttpStatus.BAD_REQUEST);
-        assertThat(result).bodyJson().extractingPath("$.errors.status").isEqualTo("並べる列（status）を指定してください");
+        assertThat(result).bodyJson().extractingPath("$.errors.columnId").isEqualTo("並べる列（columnId）を指定してください");
     }
 
     @Test
     @DisplayName("存在しない id を書き換えようとすると 404 になり、detail に理由が入る")
     void updateUnknownIdIsNotFound() {
         // 準備：一度作って消した id を使う（その id のタスクは確実に存在しない）
-        Task task = saveTask("消すタスク", TaskStatus.TODO, 0);
+        Task task = saveTask("消すタスク", todo, 0);
         taskRepository.delete(task);
 
         MvcTestResult result = mvc.put().uri("/api/tasks/{id}", task.getId())
@@ -414,13 +456,27 @@ class TaskApiTest {
                 .exchange();
     }
 
+    // 今の列の名前を、左から順に並べて返す
+    private List<String> columnNames() {
+        return columnRepository.findAllByOrderBySortOrderAsc().stream().map(BoardColumn::getName).toList();
+    }
+
+    // 名前で列を探して、その列のタスク名を上から順に返す（読み込むと列の番号が変わるので、名前で探す）
+    private List<String> textsInColumnNamed(String name) {
+        BoardColumn column = columnRepository.findAllByOrderBySortOrderAsc().stream()
+                .filter(c -> c.getName().equals(name))
+                .findFirst()
+                .orElseThrow();
+        return textsIn(column.getId());
+    }
+
     @Test
-    @DisplayName("書き出すと、絞り込みに関係なく全部のタスクが、id なしで列→並び順に返り、ファイル名の札が付く")
-    void exportReturnsAllTasksAsFile() {
+    @DisplayName("書き出すと、絞り込みに関係なく全部の列とタスクが、id なしで左から・上から順に返り、ファイル名の札が付く")
+    void exportReturnsAllColumnsAndTasksAsFile() {
         // 準備：「やるべきこと」に A・B、「終わったこと」に C
-        saveTask("A", TaskStatus.TODO, 0);
-        saveTask("B", TaskStatus.TODO, 1);
-        saveTask("C", TaskStatus.DONE, 0);
+        saveTask("A", todo, 0);
+        saveTask("B", todo, 1);
+        saveTask("C", done, 0);
 
         // 実行：絞り込みの条件を付けても、書き出しは全部を返す
         MvcTestResult result = mvc.get().uri("/api/tasks/export").param("priority", "high").exchange();
@@ -429,101 +485,176 @@ class TaskApiTest {
         assertThat(result).hasStatus(HttpStatus.OK);
         assertThat(result).headers().hasValue(HttpHeaders.CONTENT_DISPOSITION,
                 "attachment; filename=\"tasks-" + LocalDate.now() + ".json\"");
-        assertThat(result).bodyJson().extractingPath("$.version").isEqualTo(1);
-        // 列は文字の順（done → todo）、その中は並び順の小さい順
-        assertThat(result).bodyJson().extractingPath("$.tasks[*].text").asArray().containsExactly("C", "A", "B");
-        assertThat(result).bodyJson().extractingPath("$.tasks[0]").asMap().doesNotContainKey("id");
+        assertThat(result).bodyJson().extractingPath("$.version").isEqualTo(2);
+        assertThat(result).bodyJson().extractingPath("$.columns[*].name").asArray()
+                .containsExactly("やるべきこと", "進行中", "終わったこと");
+        assertThat(result).bodyJson().extractingPath("$.columns[*].done").asArray()
+                .containsExactly(false, false, true);
+        assertThat(result).bodyJson().extractingPath("$.columns[0].tasks[*].text").asArray().containsExactly("A", "B");
+        assertThat(result).bodyJson().extractingPath("$.columns[2].tasks[*].text").asArray().containsExactly("C");
+        assertThat(result).bodyJson().extractingPath("$.columns[0].tasks[0]").asMap().doesNotContainKey("id");
+        // 古い版の項目（tasks）は書き出さない
+        assertThat(result).bodyJson().extractingPath("$").asMap().doesNotContainKey("tasks");
     }
 
     @Test
-    @DisplayName("読み込むと、今のタスクが全部消え、ファイルのタスクだけになる。列ごとの順番はファイルどおりで、番号は 0・1・2… になる")
-    void importReplacesAllTasks() {
+    @DisplayName("読み込むと、今の列とタスクが全部消え、ファイルの列とタスクだけになる。順番はファイルに書いた順")
+    void importReplacesAllColumnsAndTasks() {
         // 準備：今あるタスク
-        saveTask("古いタスク", TaskStatus.TODO, 0);
+        saveTask("古いタスク", todo, 0);
 
-        // 実行：「やるべきこと」に P(5)・Q(0.5)・R(2)、「進行中」に D が入ったファイルを読み込む
+        // 実行：「アイデア」「作業中」「完了」の3列が入ったファイルを読み込む
+        MvcTestResult result = importFile("""
+                {"version": 2, "columns": [
+                  {"name": "アイデア", "tasks": [
+                    {"text": "Q", "priority": "high"},
+                    {"text": "R", "priority": "medium"},
+                    {"text": "P", "priority": "low"}
+                  ]},
+                  {"name": "作業中", "tasks": [
+                    {"text": "D", "priority": "high", "dueDate": "2026-10-01"}
+                  ]},
+                  {"name": "完了", "done": true, "tasks": []}
+                ]}
+                """);
+
+        // 確かめる：古い列とタスクは消え、ファイルどおりになっている。番号は 0・1・2…
+        assertThat(result).hasStatus(HttpStatus.NO_CONTENT);
+        assertThat(columnNames()).containsExactly("アイデア", "作業中", "完了");
+        assertThat(columnRepository.findByDoneTrue()).get()
+                .satisfies(column -> assertThat(column.getName()).isEqualTo("完了"));
+        assertThat(taskRepository.count()).isEqualTo(4);
+        assertThat(textsInColumnNamed("アイデア")).containsExactly("Q", "R", "P");
+        BoardColumn working = columnRepository.findAllByOrderBySortOrderAsc().get(1);
+        assertThat(taskRepository.findByColumnIdOrderBySortOrderAsc(working.getId())).singleElement()
+                .satisfies(task -> {
+                    assertThat(task.getText()).isEqualTo("D");
+                    assertThat(task.getPriority()).isEqualTo(TaskPriority.HIGH);
+                    assertThat(task.getDueDate()).isEqualTo(LocalDate.of(2026, 10, 1));
+                    assertThat(task.getSortOrder()).isZero();
+                });
+    }
+
+    @Test
+    @DisplayName("古い版（version 1）のファイルも読み込め、todo・doing・done が3つの列に、並び順どおりに入る")
+    void importVersion1File() {
+        saveTask("古いタスク", todo, 0);
+
+        // 実行：「やるべきこと」に P(5)・Q(0.5)・R(2)、「進行中」に D が入った、#36 の形のファイルを読み込む
         MvcTestResult result = importFile("""
                 {"version": 1, "tasks": [
                   {"text": "P", "status": "todo", "priority": "low", "sortOrder": 5},
                   {"text": "Q", "status": "todo", "priority": "high", "sortOrder": 0.5},
                   {"text": "R", "status": "todo", "priority": "medium", "sortOrder": 2},
-                  {"text": "D", "status": "doing", "priority": "high", "dueDate": "2026-10-01", "sortOrder": 0}
+                  {"text": "D", "status": "doing", "priority": "high", "sortOrder": 0}
                 ]}
                 """);
 
-        // 確かめる：古いタスクは消え、Q・R・P の順に 0・1・2 番になっている
+        // 確かめる：3つの列が作られ、「終わったこと」が完了の列。Q・R・P の順になっている
         assertThat(result).hasStatus(HttpStatus.NO_CONTENT);
-        assertThat(taskRepository.count()).isEqualTo(4);
-        assertThat(textsIn(TaskStatus.TODO)).containsExactly("Q", "R", "P");
-        assertThat(taskRepository.findByStatusOrderBySortOrderAsc(TaskStatus.TODO))
-                .extracting(Task::getSortOrder).containsExactly(0.0, 1.0, 2.0);
-        assertThat(taskRepository.findByStatusOrderBySortOrderAsc(TaskStatus.DOING)).singleElement()
-                .satisfies(task -> {
-                    assertThat(task.getText()).isEqualTo("D");
-                    assertThat(task.getPriority()).isEqualTo(TaskPriority.HIGH);
-                    assertThat(task.getDueDate()).isEqualTo(LocalDate.of(2026, 10, 1));
-                });
+        assertThat(columnNames()).containsExactly("やるべきこと", "進行中", "終わったこと");
+        assertThat(columnRepository.findByDoneTrue()).get()
+                .satisfies(column -> assertThat(column.getName()).isEqualTo("終わったこと"));
+        assertThat(textsInColumnNamed("やるべきこと")).containsExactly("Q", "R", "P");
+        assertThat(textsInColumnNamed("進行中")).containsExactly("D");
+        assertThat(textsInColumnNamed("終わったこと")).isEmpty();
     }
 
     @Test
     @DisplayName("読み込むファイルに1件でもおかしいタスクがあると 400 になり、今のタスクは1件も消えない")
     void importWithBlankTextKeepsCurrentTasks() {
-        saveTask("今あるタスク", TaskStatus.TODO, 0);
+        saveTask("今あるタスク", todo, 0);
 
-        // 2件目（tasks[1]）のタスク名が空
+        // 1つ目の列の2件目（columns[0].tasks[1]）のタスク名が空
         MvcTestResult result = importFile("""
-                {"version": 1, "tasks": [
-                  {"text": "よいタスク", "status": "todo", "priority": "high", "sortOrder": 0},
-                  {"text": "", "status": "todo", "priority": "high", "sortOrder": 1}
+                {"version": 2, "columns": [
+                  {"name": "やるべきこと", "done": true, "tasks": [
+                    {"text": "よいタスク", "priority": "high"},
+                    {"text": "", "priority": "high"}
+                  ]}
                 ]}
                 """);
 
         assertThat(result).hasStatus(HttpStatus.BAD_REQUEST);
-        assertThat(result).bodyJson().extractingPath("$.errors['tasks[1].text']").isEqualTo("タスク名を入力してください");
-        assertThat(textsIn(TaskStatus.TODO)).containsExactly("今あるタスク");
+        assertThat(result).bodyJson().extractingPath("$.errors['columns[0].tasks[1].text']")
+                .isEqualTo("タスク名を入力してください");
+        assertThat(textsIn(todo)).containsExactly("今あるタスク");
     }
 
     @Test
-    @DisplayName("読み込むファイルの version が 1 でないとき、JSON として読めないときは 400 になり、今のタスクは消えない")
+    @DisplayName("読み込むファイルの完了の列がちょうど1つでないと 400 になり、今の列とタスクは消えない")
+    void importWithoutOneDoneColumnIsBadRequest() {
+        saveTask("今あるタスク", todo, 0);
+
+        MvcTestResult noDone = importFile("""
+                {"version": 2, "columns": [{"name": "A", "tasks": []}, {"name": "B", "tasks": []}]}
+                """);
+        assertThat(noDone).hasStatus(HttpStatus.BAD_REQUEST);
+        assertThat(noDone).bodyJson().extractingPath("$.detail")
+                .isEqualTo("完了の列（done が true の列）は、ちょうど1つにしてください（今は 0 個）");
+
+        MvcTestResult twoDone = importFile("""
+                {"version": 2, "columns": [
+                  {"name": "A", "done": true, "tasks": []}, {"name": "B", "done": true, "tasks": []}
+                ]}
+                """);
+        assertThat(twoDone).hasStatus(HttpStatus.BAD_REQUEST);
+
+        assertThat(columnNames()).containsExactly("やるべきこと", "進行中", "終わったこと");
+        assertThat(textsIn(todo)).containsExactly("今あるタスク");
+    }
+
+    @Test
+    @DisplayName("読み込むファイルの version が 1・2 でないとき、JSON として読めないときは 400 になり、今のタスクは消えない")
     void importWithUnknownVersionOrBrokenJsonIsBadRequest() {
-        saveTask("今あるタスク", TaskStatus.TODO, 0);
+        saveTask("今あるタスク", todo, 0);
 
         MvcTestResult unknownVersion = importFile("""
-                {"version": 2, "tasks": []}
+                {"version": 3, "columns": []}
                 """);
         assertThat(unknownVersion).hasStatus(HttpStatus.BAD_REQUEST);
         assertThat(unknownVersion).bodyJson().extractingPath("$.detail")
-                .isEqualTo("この版（version: 2）のファイルは読み込めません。読み込めるのは version が 1 のファイルです");
+                .isEqualTo("この版（version: 3）のファイルは読み込めません。読み込めるのは version が 1 か 2 のファイルです");
 
-        assertThat(importFile("{\"version\": 1, \"tasks\": [")).hasStatus(HttpStatus.BAD_REQUEST);
+        assertThat(importFile("{\"version\": 2, \"columns\": [")).hasStatus(HttpStatus.BAD_REQUEST);
 
-        assertThat(textsIn(TaskStatus.TODO)).containsExactly("今あるタスク");
+        assertThat(textsIn(todo)).containsExactly("今あるタスク");
     }
 
     @Test
     @DisplayName("書き出したファイルをそのまま読み込むと、書き出したときと同じ中身に戻る")
-    void exportThenImportRestoresTasks() {
-        // 準備：書き出す前のタスク
-        taskRepository.save(new Task("牛乳を買う", TaskStatus.TODO, TaskPriority.HIGH, LocalDate.of(2026, 10, 1), 0.0));
-        saveTask("パンを買う", TaskStatus.TODO, 1);
-        saveTask("本を読む", TaskStatus.DOING, 0);
+    void exportThenImportRestoresBoard() {
+        // 準備：書き出す前の列とタスク（列を1つ足して、完了の列を「進行中」に変えておく）
+        columnRepository.save(new BoardColumn("確認待ち", 3.0, false));
+        BoardColumn doneColumn = columnRepository.findById(done).orElseThrow();
+        doneColumn.setDone(false);
+        columnRepository.saveAndFlush(doneColumn);
+        BoardColumn doingColumn = columnRepository.findById(doing).orElseThrow();
+        doingColumn.setDone(true);
+        columnRepository.saveAndFlush(doingColumn);
+        taskRepository.save(new Task("牛乳を買う", todo, TaskPriority.HIGH, LocalDate.of(2026, 10, 1), 0.0));
+        saveTask("パンを買う", todo, 1);
+        saveTask("本を読む", doing, 0);
 
         // 書き出して、その中身（JSON の文字）を取っておく
         MvcTestResult exported = mvc.get().uri("/api/tasks/export").exchange();
         String file = new String(exported.getResponse().getContentAsByteArray(), StandardCharsets.UTF_8);
 
-        // 書き出したあとで、タスクを変えてしまう
-        taskRepository.deleteAll();
-        saveTask("あとで足したタスク", TaskStatus.DONE, 0);
+        // 書き出したあとで、列とタスクを変えてしまう
+        resetBoard();
+        saveTask("あとで足したタスク", done, 0);
 
         // 実行：取っておいたファイルを読み込む
         assertThat(importFile(file)).hasStatus(HttpStatus.NO_CONTENT);
 
         // 確かめる：書き出したときの中身に戻っている
-        assertThat(textsIn(TaskStatus.TODO)).containsExactly("牛乳を買う", "パンを買う");
-        assertThat(textsIn(TaskStatus.DOING)).containsExactly("本を読む");
-        assertThat(textsIn(TaskStatus.DONE)).isEmpty();
-        assertThat(taskRepository.findByStatusOrderBySortOrderAsc(TaskStatus.TODO).getFirst())
+        assertThat(columnNames()).containsExactly("やるべきこと", "進行中", "終わったこと", "確認待ち");
+        assertThat(columnRepository.findByDoneTrue()).get()
+                .satisfies(column -> assertThat(column.getName()).isEqualTo("進行中"));
+        assertThat(textsInColumnNamed("やるべきこと")).containsExactly("牛乳を買う", "パンを買う");
+        assertThat(textsInColumnNamed("進行中")).containsExactly("本を読む");
+        assertThat(textsInColumnNamed("終わったこと")).isEmpty();
+        assertThat(taskRepository.findAll()).filteredOn(task -> "牛乳を買う".equals(task.getText())).singleElement()
                 .satisfies(task -> {
                     assertThat(task.getPriority()).isEqualTo(TaskPriority.HIGH);
                     assertThat(task.getDueDate()).isEqualTo(LocalDate.of(2026, 10, 1));
