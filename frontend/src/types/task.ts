@@ -3,7 +3,8 @@
 export type Task = {
   id: number
   text: string
-  status: 'todo' | 'doing' | 'done'
+  // どの列にいるか（列の番号。BoardColumn の id）
+  columnId: number
   priority: 'high' | 'medium' | 'low'
   dueDate: string | null
   sortOrder: number
@@ -13,7 +14,7 @@ export type Task = {
 // id と sortOrder はバックエンドが決めるので、ここには入れない
 export type NewTask = {
   text: string
-  status: Task['status']
+  columnId: number
   priority: Task['priority']
   dueDate: string | null
 }

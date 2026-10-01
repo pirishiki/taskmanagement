@@ -26,6 +26,8 @@ function stopKeyFromReachingCard(event: KeyboardEvent<HTMLButtonElement>) {
 
 type Props = {
   task: Task
+  // 完了の列の番号。○ を押したタスクは、この列へ移る（列の一覧をまだ取れていないときは null）
+  doneColumnId: number | null
   onUpdate: (id: number, task: NewTask) => void
   onPatch: (id: number, patch: TaskPatch) => void
   onDelete: (id: number) => void
@@ -55,7 +57,7 @@ export function TaskCardOverlay({ task }: { task: Task }) {
   )
 }
 
-function TaskCard({ task, onUpdate, onPatch, onDelete }: Props) {
+function TaskCard({ task, doneColumnId, onUpdate, onPatch, onDelete }: Props) {
   // 編集中のカードを出す位置。null のあいだは編集していない
   // 編集中のカードに目が向くように、画面を暗くして、その上の同じ位置に編集用のカードを重ねる
   const [editPosition, setEditPosition] = useState<DOMRect | null>(null)
@@ -123,10 +125,10 @@ function TaskCard({ task, onUpdate, onPatch, onDelete }: Props) {
     // タスク名が空欄や空白だけのときは、元のタスク名のままにする（要件定義書の試験14）
     const trimmed = text.trim()
 
-    // PUT は丸ごと書き換えるので、変えていない status も今の値のまま送る
+    // PUT は丸ごと書き換えるので、変えていない列（columnId）も今の値のまま送る
     onUpdate(task.id, {
       text: trimmed === '' ? task.text : trimmed,
-      status: task.status,
+      columnId: task.columnId,
       priority,
       dueDate: dueDate === '' ? null : dueDate,
     })
@@ -161,11 +163,11 @@ function TaskCard({ task, onUpdate, onPatch, onDelete }: Props) {
         className={`group rounded bg-white p-3 shadow-sm cursor-grab ${isDragging ? 'opacity-40' : ''}`}
       >
         <div className="flex items-start gap-2">
-          {/* ○：押すと完了にする。変えるのは status だけなので PATCH を使う。「終わったこと」の列では出さない */}
-          {task.status !== 'done' && (
+          {/* ○：押すと完了の列へ移す。変えるのは列（columnId）だけなので PATCH を使う。完了の列のカードには出さない */}
+          {doneColumnId !== null && task.columnId !== doneColumnId && (
             <button
               type="button"
-              onClick={() => onPatch(task.id, { status: 'done' })}
+              onClick={() => onPatch(task.id, { columnId: doneColumnId })}
               onKeyDown={stopKeyFromReachingCard}
               aria-label="完了にする"
               title="完了にする"
