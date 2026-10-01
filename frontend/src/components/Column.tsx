@@ -26,9 +26,19 @@ type Props = {
   onPatch: (id: number, patch: TaskPatch) => void
   onDelete: (id: number) => void
   onSort: (columnId: number, criterion: SortCriterion) => void
+  onDeleteColumn: (columnId: number) => void
 }
 
-function Column({ column, tasks, doneColumnId, onAdd, onUpdate, onPatch, onDelete, onSort }: Props) {
+function Column({ column, tasks, doneColumnId, onAdd, onUpdate, onPatch, onDelete, onSort, onDeleteColumn }: Props) {
+  // 列の × を押したとき：押し間違いで消えないよう、ブラウザの確認ダイアログを出す（カードの × と同じ）
+  // タスクが入っている列は、サーバーが断る（409）。理由は App が画面の上に出す
+  // （検索・絞り込み中は見えていないタスクもあるので、画面のカードの枚数では決めず、サーバーに確かめてもらう）
+  function handleDeleteClick() {
+    if (window.confirm(`列「${column.name}」を削除しますか？`)) {
+      onDeleteColumn(column.id)
+    }
+  }
+
   // ドラッグ＆ドロップ：この列を「置き場所」にする。id は 'column-1' のような文字（上の droppableIdPrefix を参照）
   // カードが1枚もない列でも、ここに落とせるようにするため
   const { setNodeRef } = useDroppable({ id: `${droppableIdPrefix}${column.id}` })
@@ -36,7 +46,8 @@ function Column({ column, tasks, doneColumnId, onAdd, onUpdate, onPatch, onDelet
   return (
     <section className="w-72 shrink-0 rounded-md bg-[#ebecf0] p-3">
       <div className="mb-3 flex items-center justify-between gap-2">
-        <h2 className="font-bold text-gray-700">{column.name}</h2>
+        {/* min-w-0 と break-words：長い名前でも、列の幅からはみ出さずに折り返す */}
+        <h2 className="min-w-0 flex-1 font-bold break-words text-gray-700">{column.name}</h2>
         {/* 並び替えセレクト：選んだ時点で一度だけ並べ直す。value はいつも ''（「並び替え」）なので、選んだあとは表示が元に戻る */}
         {/* 検索・絞り込み中は、見えているカードだけを並べ直す（見えていないカードの位置は変わらない） */}
         <select
@@ -59,6 +70,18 @@ function Column({ column, tasks, doneColumnId, onAdd, onUpdate, onPatch, onDelet
             </option>
           ))}
         </select>
+        {/* ×：列を削除する。完了の列は消せない（○ ボタンの移し先がなくなる）ので、ボタンを出さない */}
+        {!column.done && (
+          <button
+            type="button"
+            onClick={handleDeleteClick}
+            aria-label={`列「${column.name}」を削除`}
+            title="列を削除"
+            className="shrink-0 rounded px-1 text-gray-400 hover:bg-gray-300/60 hover:text-[#eb5a46]"
+          >
+            ×
+          </button>
+        )}
       </div>
       {/* SortableContext：この中のカードは、上下に並び替えられる。items には並んでいる順の id を渡す */}
       <SortableContext items={tasks.map((task) => task.id)} strategy={verticalListSortingStrategy}>

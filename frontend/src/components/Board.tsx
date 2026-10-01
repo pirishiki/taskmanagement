@@ -15,6 +15,7 @@ import { sortableKeyboardCoordinates } from '@dnd-kit/sortable'
 import { useState } from 'react'
 import type { BoardColumn } from '../types/column'
 import type { NewTask, SortCriterion, Task, TaskPatch } from '../types/task'
+import AddColumnForm from './AddColumnForm'
 import Column, { droppableIdPrefix } from './Column'
 import { TaskCardOverlay } from './TaskCard'
 
@@ -28,6 +29,8 @@ type Props = {
   onDelete: (id: number) => void
   onMove: (taskId: number, toColumnId: number, toIndex: number) => void
   onSort: (columnId: number, criterion: SortCriterion) => void
+  onAddColumn: (name: string) => void
+  onDeleteColumn: (columnId: number) => void
 }
 
 // その列のタスクだけを取り出し、並び順（sortOrder）の小さい順に並べる
@@ -36,7 +39,18 @@ function tasksIn(tasks: Task[], columnId: number) {
   return tasks.filter((task) => task.columnId === columnId).sort((a, b) => a.sortOrder - b.sortOrder)
 }
 
-function Board({ columns, tasks, onAdd, onUpdate, onPatch, onDelete, onMove, onSort }: Props) {
+function Board({
+  columns,
+  tasks,
+  onAdd,
+  onUpdate,
+  onPatch,
+  onDelete,
+  onMove,
+  onSort,
+  onAddColumn,
+  onDeleteColumn,
+}: Props) {
   // 完了の列の番号（カードの ○ ボタンの移し先）。列の一覧をまだ取れていないときは null
   const doneColumnId = columns.find((column) => column.done)?.id ?? null
 
@@ -147,8 +161,11 @@ function Board({ columns, tasks, onAdd, onUpdate, onPatch, onDelete, onMove, onS
             onPatch={onPatch}
             onDelete={onDelete}
             onSort={onSort}
+            onDeleteColumn={onDeleteColumn}
           />
         ))}
+        {/* 一番右に「＋ 列を追加」。足した列は、このボタンのすぐ左（右端の列）に入る */}
+        <AddColumnForm onAdd={onAddColumn} />
       </div>
       {/* DragOverlay：列の枠とは関係なく、画面の一番手前にカードの分身を出して、マウスに付いてこさせる */}
       <DragOverlay>{activeTask && <TaskCardOverlay task={activeTask} />}</DragOverlay>

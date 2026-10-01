@@ -11,7 +11,7 @@ import {
   reorderTasks,
   updateTask,
 } from './api/taskApi'
-import { fetchColumns } from './api/columnApi'
+import { createColumn, deleteColumn, fetchColumns } from './api/columnApi'
 import Board from './components/Board'
 import DataButtons from './components/DataButtons'
 import SearchBar from './components/SearchBar'
@@ -262,6 +262,31 @@ function App() {
       })
   }
 
+  // 「＋ 列を追加」のフォームで「列を追加」が押されたときに呼ばれる。足した列は右端に入る
+  function handleAddColumn(name: string) {
+    createColumn(name)
+      .then((created) => {
+        setColumns((prev) => [...prev, created])
+        setError(null)
+      })
+      .catch((error) => {
+        setError(errorMessage(error, '列を追加'))
+      })
+  }
+
+  // 列の × で削除が確かめられたときに呼ばれる（確認のダイアログは列の側で出す）
+  // タスクが入っている列なら、サーバーが断る（409）。そのときは理由を画面に出し、列はそのまま残す
+  function handleDeleteColumn(id: number) {
+    deleteColumn(id)
+      .then(() => {
+        setColumns((prev) => prev.filter((column) => column.id !== id))
+        setError(null)
+      })
+      .catch((error) => {
+        setError(errorMessage(error, '列を削除'))
+      })
+  }
+
   // 「⬇ 書き出す」が押されたときに呼ばれる。全部のタスクを JSON のファイルとして保存させる
   function handleExport() {
     exportTasks()
@@ -315,6 +340,8 @@ function App() {
         onDelete={handleDelete}
         onMove={handleMove}
         onSort={handleSort}
+        onAddColumn={handleAddColumn}
+        onDeleteColumn={handleDeleteColumn}
       />
     </div>
   )
