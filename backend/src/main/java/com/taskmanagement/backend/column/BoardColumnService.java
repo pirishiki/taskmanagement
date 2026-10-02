@@ -92,6 +92,6 @@ public class BoardColumnService {
     // 列を取ってくる。なければ 404
     private BoardColumn findOrThrow(Long id) {
         return columnRepository.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "id が " + id + " の列は見つかりません"));
+                .orElseThrow(() -> new ColumnNotFoundException(id));
     }
 }

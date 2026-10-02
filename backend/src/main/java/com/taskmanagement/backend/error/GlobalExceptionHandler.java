@@ -1,5 +1,6 @@
 package com.taskmanagement.backend.error;
 
+import com.taskmanagement.backend.column.ColumnNotFoundException;
 import com.taskmanagement.backend.task.TaskNotFoundException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -58,6 +59,12 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     // タスクが見つからない（404）
     @ExceptionHandler(TaskNotFoundException.class)
     public ProblemDetail handleTaskNotFound(TaskNotFoundException ex) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, ex.getMessage());
+    }
+
+    // 列が見つからない（404）
+    @ExceptionHandler(ColumnNotFoundException.class)
+    public ProblemDetail handleColumnNotFound(ColumnNotFoundException ex) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, ex.getMessage());
     }
 
