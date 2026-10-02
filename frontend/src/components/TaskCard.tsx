@@ -233,7 +233,7 @@ function TaskCard({ task, doneColumnId, onUpdate, onPatch, onDelete }: Props) {
                   保存
                 </button>
               </form>
-  
+
               {/* 右：メニュー（優先度・期限）。ここで変えた値は、保存ボタンを押したときにまとめて送る */}
               <div className="flex w-44 flex-col gap-2">
                 <div className="rounded bg-black/70 p-2 text-sm text-white">
