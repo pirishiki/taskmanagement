@@ -117,6 +117,28 @@ class TaskApiTest {
         assertThat(textsIn(done)).containsExactly("前に終わったタスク", "牛乳を買う");
     }
 
+    @Test
+    @DisplayName("PUT で columnId を省略すると、タスクは今の列の今の位置のまま、中身だけが変わる")
+    void putWithoutColumnKeepsColumnAndPosition() {
+        // 準備：「進行中」に2件。1件目は、別の端末で「やるべきこと」から動かしてきたつもりのタスク
+        Task task = saveTask("牛乳を買う", doing, 0);
+        saveTask("パンを買う", doing, 1);
+
+        // 実行：画面のクイック編集の保存と同じ頼み方（列は送らない）
+        MvcTestResult result = mvc.put().uri("/api/tasks/{id}", task.getId())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"text": "牛乳を2本買う", "priority": "high", "dueDate": null}
+                        """)
+                .exchange();
+
+        // 確かめる：列も並び順も変わらず、タスク名と優先度だけが変わっている（イシュー #47 の #20）
+        assertThat(result).hasStatus(HttpStatus.OK);
+        assertThat(result).bodyJson().extractingPath("$.columnId").isEqualTo(doing.intValue());
+        assertThat(result).bodyJson().extractingPath("$.priority").isEqualTo("high");
+        assertThat(textsIn(doing)).containsExactly("牛乳を2本買う", "パンを買う");
+    }
+
     // ここから下は、並び替え（move・reorder）のテスト
     // 絞り込み中を思い浮かべて、「画面に見えているカード」と「見えていないカード」を混ぜて準備する
 
@@ -644,7 +666,11 @@ class TaskApiTest {
         assertThat(unknownVersion).bodyJson().extractingPath("$.detail")
                 .isEqualTo("この版（version: 3）のファイルは読み込めません。読み込めるのは version が 1 か 2 のファイルです");
 
-        assertThat(importFile("{\"version\": 2, \"columns\": [")).hasStatus(HttpStatus.BAD_REQUEST);
+        // 壊れたファイル：メッセージは、ファイルの読み込みにも合う言い方（JSON の形を確かめる）になっている（イシュー #47 の #23）
+        MvcTestResult brokenJson = importFile("{\"version\": 2, \"columns\": [");
+        assertThat(brokenJson).hasStatus(HttpStatus.BAD_REQUEST);
+        assertThat(brokenJson).bodyJson().extractingPath("$.detail").asString()
+                .startsWith("送られてきた内容を読み取れませんでした。JSON の形が崩れていないか");
 
         assertThat(textsIn(todo)).containsExactly("今あるタスク");
     }

@@ -1,6 +1,7 @@
 package com.taskmanagement.backend.column;
 
 import com.taskmanagement.backend.task.TaskRepository;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -83,15 +84,31 @@ public class BoardColumnService {
                     "基本の列（やるべきこと・進行中・終わったこと）は消せません");
         }
         if (taskRepository.existsByColumnId(id)) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "タスクが入っている列は消せません。先にタスクをほかの列へ移すか、消してください");
+            throw columnHasTasks(null);
         }
-        columnRepository.delete(column);
+
+        // 確かめてから消すまでの一瞬のすき間に、ほかの端末がこの列にタスクを足すと、DB の外部キーが消すのを止める
+        // （DataIntegrityViolationException）。そのときも、分かりにくい 500 ではなく、上と同じ 409 にする
+        // flush：消す命令を、今すぐ DB に送る。ふだんはメソッドの最後にまとめて送るので、ここで送らないと、
+        // 止められたことに、この try の中で気づけない
+        try {
+            columnRepository.delete(column);
+            columnRepository.flush();
+        } catch (DataIntegrityViolationException ex) {
+            throw columnHasTasks(ex);
+        }
+    }
+
+    // 「タスクが入っている列は消せない」の 409。cause には、もとになった例外（なければ null）を入れる
+    // （もとの例外をつないでおくと、サーバーのログで、本当は何が起きたかをたどれる）
+    private static ResponseStatusException columnHasTasks(Throwable cause) {
+        return new ResponseStatusException(HttpStatus.CONFLICT,
+                "タスクが入っている列は消せません。先にタスクをほかの列へ移すか、消してください", cause);
     }
 
     // 列を取ってくる。なければ 404
     private BoardColumn findOrThrow(Long id) {
         return columnRepository.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "id が " + id + " の列は見つかりません"));
+                .orElseThrow(() -> new ColumnNotFoundException(id));
     }
 }

@@ -1,7 +1,7 @@
 import { useDroppable } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import type { BoardColumn } from '../types/column'
-import type { NewTask, SortCriterion, Task, TaskPatch } from '../types/task'
+import type { NewTask, SortCriterion, Task, TaskContent, TaskPatch } from '../types/task'
 import AddTaskForm from './AddTaskForm'
 import TaskCard from './TaskCard'
 
@@ -22,7 +22,7 @@ type Props = {
   // 完了の列の番号（カードの ○ ボタンで使う）
   doneColumnId: number | null
   onAdd: (task: NewTask) => void
-  onUpdate: (id: number, task: NewTask) => void
+  onUpdate: (id: number, task: TaskContent) => void
   onPatch: (id: number, patch: TaskPatch) => void
   onDelete: (id: number) => void
   onSort: (columnId: number, criterion: SortCriterion) => void

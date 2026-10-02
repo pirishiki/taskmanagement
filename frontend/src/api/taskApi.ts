@@ -1,4 +1,4 @@
-import type { NewTask, Task, TaskFilters, TaskPatch } from '../types/task'
+import type { NewTask, Task, TaskContent, TaskFilters, TaskPatch } from '../types/task'
 
 // エラーの返事（ProblemDetail）の中身。バックエンドの GlobalExceptionHandler が作る
 // errors は、入力チェック違反のときだけ入る（項目名 → メッセージ）
@@ -73,8 +73,9 @@ export async function createTask(task: NewTask): Promise<Task> {
   return response.json()
 }
 
-// タスクを丸ごと書き換える（PUT）。書き換え後のタスクが返る
-export async function updateTask(id: number, task: NewTask): Promise<Task> {
+// タスクの中身（タスク名・優先度・期限）を丸ごと書き換える（PUT）。書き換え後のタスクが返る
+// 列（columnId）は送らないので、タスクは今の列のまま（types/task.ts の TaskContent を参照）
+export async function updateTask(id: number, task: TaskContent): Promise<Task> {
   const response = await request(`/api/tasks/${id}`, {
     method: 'PUT',
     headers: jsonHeaders,

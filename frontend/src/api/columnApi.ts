@@ -1,5 +1,5 @@
 import type { BoardColumn } from '../types/column'
-import { jsonHeaders, request } from './taskApi'
+import { ApiError, jsonHeaders, request } from './taskApi'
 
 // 列の API（/api/columns）を呼ぶ関数。失敗したときは、タスクの API と同じく ApiError を投げる
 
@@ -21,6 +21,15 @@ export async function createColumn(name: string): Promise<BoardColumn> {
 
 // 列を消す。返ってくる中身はない（204）
 // 基本の列・中にタスクがいる列は消せない（409 の ApiError になる。理由は error.message に入っている）
+// 404（その列はもうない）も成功として扱う。別のタブなどで先に消されていても、「消したい」という目的は果たせているため
+// （タスクの削除 deleteTask と同じ考え方）
 export async function deleteColumn(id: number): Promise<void> {
-  await request(`/api/columns/${id}`, { method: 'DELETE' })
+  try {
+    await request(`/api/columns/${id}`, { method: 'DELETE' })
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) {
+      return
+    }
+    throw error
+  }
 }
