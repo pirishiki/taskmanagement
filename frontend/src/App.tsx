@@ -16,7 +16,7 @@ import Board from './components/Board'
 import DataButtons from './components/DataButtons'
 import SearchBar from './components/SearchBar'
 import type { BoardColumn } from './types/column'
-import { noFilters, type NewTask, type SortCriterion, type Task, type TaskFilters, type TaskPatch } from './types/task'
+import { noFilters, type NewTask, type SortCriterion, type Task, type TaskContent, type TaskFilters, type TaskPatch } from './types/task'
 
 // 優先度順に並べるときの順位（数字が小さいほど上に来る）
 const priorityRank: Record<Task['priority'], number> = {
@@ -134,7 +134,7 @@ function App() {
   }
 
   // カードの編集フォームで「保存」が押されたときに呼ばれる（PUT で丸ごと書き換える）
-  function handleUpdate(id: number, task: NewTask) {
+  function handleUpdate(id: number, task: TaskContent) {
     updateTask(id, task)
       .then((updated) => {
         // 同じ id のタスクだけを、返ってきたタスクに入れ替える（ほかはそのまま）

@@ -1,7 +1,7 @@
 import { useSortable } from '@dnd-kit/sortable'
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 import { createPortal } from 'react-dom'
-import type { NewTask, Task, TaskPatch } from '../types/task'
+import type { Task, TaskContent, TaskPatch } from '../types/task'
 
 // 優先度ごとの表示名と色（試作版 style.css と同じ色）
 const priorityLabels: Record<Task['priority'], string> = {
@@ -28,7 +28,7 @@ type Props = {
   task: Task
   // 完了の列の番号。○ を押したタスクは、この列へ移る（列の一覧をまだ取れていないときは null）
   doneColumnId: number | null
-  onUpdate: (id: number, task: NewTask) => void
+  onUpdate: (id: number, task: TaskContent) => void
   onPatch: (id: number, patch: TaskPatch) => void
   onDelete: (id: number) => void
 }
@@ -125,10 +125,9 @@ function TaskCard({ task, doneColumnId, onUpdate, onPatch, onDelete }: Props) {
     // タスク名が空欄や空白だけのときは、元のタスク名のままにする（要件定義書の試験14）
     const trimmed = text.trim()
 
-    // PUT は丸ごと書き換えるので、変えていない列（columnId）も今の値のまま送る
+    // 列（columnId）は送らない。サーバーは今の列のまま残す（TaskContent の説明を参照）
     onUpdate(task.id, {
       text: trimmed === '' ? task.text : trimmed,
-      columnId: task.columnId,
       priority,
       dueDate: dueDate === '' ? null : dueDate,
     })

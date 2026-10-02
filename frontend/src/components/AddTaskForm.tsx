@@ -1,5 +1,5 @@
 import { useState, type FormEvent, type KeyboardEvent } from 'react'
-import type { NewTask, Task } from '../types/task'
+import type { Task, TaskContent } from '../types/task'
 
 // 優先度の選択肢。画面に出す <option> も、選ばれた値の確かめも、この一覧から作る
 const priorityOptions: { value: Task['priority']; label: string }[] = [
@@ -10,7 +10,7 @@ const priorityOptions: { value: Task['priority']; label: string }[] = [
 
 type Props = {
   // columnId（どの列か）は Column が決めるので、ここでは受け取らない
-  onAdd: (task: Omit<NewTask, 'columnId'>) => void
+  onAdd: (task: TaskContent) => void
 }
 
 function AddTaskForm({ onAdd }: Props) {
