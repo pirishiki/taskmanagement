@@ -666,7 +666,11 @@ class TaskApiTest {
         assertThat(unknownVersion).bodyJson().extractingPath("$.detail")
                 .isEqualTo("この版（version: 3）のファイルは読み込めません。読み込めるのは version が 1 か 2 のファイルです");
 
-        assertThat(importFile("{\"version\": 2, \"columns\": [")).hasStatus(HttpStatus.BAD_REQUEST);
+        // 壊れたファイル：メッセージは、ファイルの読み込みにも合う言い方（JSON の形を確かめる）になっている（イシュー #47 の #23）
+        MvcTestResult brokenJson = importFile("{\"version\": 2, \"columns\": [");
+        assertThat(brokenJson).hasStatus(HttpStatus.BAD_REQUEST);
+        assertThat(brokenJson).bodyJson().extractingPath("$.detail").asString()
+                .startsWith("送られてきた内容を読み取れませんでした。JSON の形が崩れていないか");
 
         assertThat(textsIn(todo)).containsExactly("今あるタスク");
     }

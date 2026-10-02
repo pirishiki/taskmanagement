@@ -44,11 +44,14 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     }
 
     // JSON が読めない：形が崩れている、priority に決まっていない値が入っている、columnId が数字でない など（400）
+    // 画面はいつも正しい形の JSON を送るので、画面でこのメッセージが出るのは、ほぼ壊れたファイルを読み込んだときだけ
+    // そのため、ファイルの読み込みにも合う言い方にする
     @Override
     protected ResponseEntity<Object> handleHttpMessageNotReadable(
             HttpMessageNotReadableException ex, HttpHeaders headers, HttpStatusCode status, WebRequest request) {
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(status,
-                "送られてきた内容を読み取れませんでした。columnId は列の番号（数字）、priority は high・medium・low のどれかを送ってください");
+                "送られてきた内容を読み取れませんでした。JSON の形が崩れていないか、項目の値"
+                        + "（列の番号は数字、優先度は high・medium・low のどれか）が正しいかを確かめてください");
         return handleExceptionInternal(ex, problem, headers, status, request);
     }
 
