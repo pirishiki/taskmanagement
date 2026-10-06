@@ -67,10 +67,12 @@ Javaとspringbootを使えると企業が採用しやすい。データにもあ
 
 | 区分 | 技術 | バージョン |
 | --- | --- | --- |
-| バージョン管理 | Git | 2.55.0 |
+| バージョン管理 | Git | 2.56.0 |
 | コンテナ | Docker（Docker Desktop。DB と、テストの Testcontainers が使う） | 29.8.0 |
 | リポジトリホスティング | GitHub | - |
 | 自動チェック（CI） | GitHub Actions（`.github/workflows/ci.yml`。PR と master へのプッシュで、フロントの lint・build と、バックエンドの `./gradlew check`（コンパイル・PMD・Checkstyle・テスト）を動かす） | actions/checkout v7・actions/setup-node v7・actions/setup-java v6・gradle/actions/setup-gradle v6 |
+| AWS の操作 | AWS CLI（`aws login --profile dothething` でログインする。リージョンは ap-southeast-2） | 2.37.9 |
+| IaC（設計図で AWS を作る） | Terraform（`infra/`。AWS 用の provider は hashicorp/aws。バージョンは `infra/.terraform.lock.hcl` に固定） | 1.16.5・hashicorp/aws 6.67.0 |
 
 ## 起動方法
 
@@ -153,7 +155,7 @@ Javaとspringbootを使えると企業が採用しやすい。データにもあ
 | # | 重さ | どんな問題か | いつ直すか |
 |---|---|---|---|
 | 21 | 中 | 2つの端末で同じものを同時に変えると、あとから保存したほうが黙って上書きする（後勝ち） | No.14 の②（ほかの端末での変更を自動で反映）を作るときに一緒に決める（No.24） |
-| 29 | — | 本番には Vite がないので、画面のファイルの配り方と、`/api` の届け方を決める必要がある | AWS に置くことが決まったら（No.25） |
+| 29 | — | 本番には Vite がないので、画面のファイルの配り方と、`/api` の届け方を決める必要がある | AWS に置くことが決まった（2026-10-06）。No.25 の順番の 3 番目で直す |
 | 30 | — | 「今日」をサーバーの時計で決めている。AWS のサーバーはふつう世界標準時なので、日本の朝9時まで「今日」がずれる | 同上 |
 | 31 | — | DB の接続先・パスワードを、どの環境変数で渡すかが決まっていない | 同上 |
 | 32 | — | サーバーが動いているかを外から確かめる入り口（ヘルスチェック）がない | 同上 |
