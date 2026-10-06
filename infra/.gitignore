@@ -1,0 +1,18 @@
+# Terraform で、Git に入れないファイル
+
+# ダウンロードした通訳さん（provider）。大きく、terraform init で作り直せる
+.terraform/
+
+# 台帳（state）とその控え。DB のパスワードなどの秘密が、そのまま書かれることがある
+*.tfstate
+*.tfstate.*
+
+# パスワードなどの値を入れるファイル
+*.tfvars
+*.tfvars.json
+
+# Terraform が落ちたときの記録
+crash.log
+crash.*.log
+
+# .terraform.lock.hcl（通訳さんのバージョンを固定するメモ）は Git に入れる
