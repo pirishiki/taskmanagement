@@ -16,7 +16,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.time.LocalDate;
 import java.util.List;
 
 @RestController
@@ -51,12 +50,14 @@ public class TaskController {
     // URL の "export" は、下の "/{id}" より先に選ばれる（Spring は、決まった文字の URL を優先する）
     @GetMapping("/export")
     public ResponseEntity<TaskFile> exportTasks() {
+        TaskFile file = taskService.exportTasks();
+        // ファイル名の日付は、ファイルの中の「書き出した日時」（日本時間）から取る。名前と中身の日付が必ずそろう
         ContentDisposition disposition = ContentDisposition.attachment()
-                .filename("tasks-" + LocalDate.now() + ".json")
+                .filename("tasks-" + file.exportedAt().toLocalDate() + ".json")
                 .build();
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, disposition.toString())
-                .body(taskService.exportTasks());
+                .body(file);
     }
 
     // 読み込み：今のタスクを全部消して、送られてきたファイルのタスクに置き換える。成功したら 204（中身なし）
