@@ -22,6 +22,7 @@ Javaとspringbootを使えると企業が採用しやすい。データにもあ
 | ドラッグ＆ドロップ | dnd-kit（@dnd-kit/core・@dnd-kit/sortable） | 6.3.1・10.0.0 |
 | スタイリング | Tailwind CSS（`tailwindcss`・Vite で使うための `@tailwindcss/vite`） | 4.3.3 |
 | 静的解析 | oxlint | 1.85.0 |
+| 本番で画面を配る | Nginx（ビルドした画面のファイルを配り、`/api` をバックエンドに回す。設定は `nginx/default.conf.template`。手元では Docker の `nginx:1.28` で試す） | 1.28 |
 
 ### バックエンド（`backend/`）
 
@@ -68,7 +69,7 @@ Javaとspringbootを使えると企業が採用しやすい。データにもあ
 | 区分 | 技術 | バージョン |
 | --- | --- | --- |
 | バージョン管理 | Git | 2.56.0 |
-| コンテナ | Docker（Docker Desktop。DB と、テストの Testcontainers が使う） | 29.8.0 |
+| コンテナ | Docker（Docker Desktop。DB と、テストの Testcontainers と、本番の形を試す Nginx が使う） | 29.8.0 |
 | リポジトリホスティング | GitHub | - |
 | 自動チェック（CI） | GitHub Actions（`.github/workflows/ci.yml`。PR と master へのプッシュで、フロントの lint・build と、バックエンドの `./gradlew check`（コンパイル・PMD・Checkstyle・テスト）を動かす） | actions/checkout v7・actions/setup-node v7・actions/setup-java v6・gradle/actions/setup-gradle v6 |
 | AWS の操作 | AWS CLI（`aws login --profile dothething` でログインする。リージョンは ap-southeast-2） | 2.37.9 |
@@ -78,6 +79,7 @@ Javaとspringbootを使えると企業が採用しやすい。データにもあ
 
 - DB・バックエンド：[backend/構成表.md](backend/構成表.md) の「起動手順」
 - フロントエンド：[frontend/README.md](frontend/README.md) の「起動手順」
+- 本番（AWS）と同じ形で試す：DB とバックエンドを起動してから、`frontend` で `npm run build` → ルートで `docker compose --profile nginx up -d` → `http://localhost` を開く。Vite の代わりに Nginx（80 番）が画面を配り、`/api` をバックエンドに回す（[nginx/default.conf.template](nginx/default.conf.template)）。コードを変えたら、もう一度ビルドする。止めるときは `docker compose --profile nginx stop nginx`
 
 ## 品質チェックで見つかった問題（2026-09-27）
 
@@ -155,7 +157,7 @@ Javaとspringbootを使えると企業が採用しやすい。データにもあ
 | # | 重さ | どんな問題か | いつ直すか |
 |---|---|---|---|
 | 21 | 中 | 2つの端末で同じものを同時に変えると、あとから保存したほうが黙って上書きする（後勝ち） | No.14 の②（ほかの端末での変更を自動で反映）を作るときに一緒に決める（No.24） |
-| 29 | — | 本番には Vite がないので、画面のファイルの配り方と、`/api` の届け方を決める必要がある | AWS に置くことが決まった（2026-10-06）。No.25 の順番の 3 番目で直す |
+| 29 | — | 本番には Vite がないので、画面のファイルの配り方と、`/api` の届け方を決める必要がある | **直した**（イシュー #53）：Nginx が画面を配り、`/api` を Spring Boot に回す |
 | 30 | — | 「今日」をサーバーの時計で決めている。AWS のサーバーはふつう世界標準時なので、日本の朝9時まで「今日」がずれる | 同上 |
 | 31 | — | DB の接続先・パスワードを、どの環境変数で渡すかが決まっていない | 同上 |
 | 32 | — | サーバーが動いているかを外から確かめる入り口（ヘルスチェック）がない | 同上 |
