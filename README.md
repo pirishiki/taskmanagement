@@ -22,7 +22,7 @@ Javaとspringbootを使えると企業が採用しやすい。データにもあ
 | ドラッグ＆ドロップ | dnd-kit（@dnd-kit/core・@dnd-kit/sortable） | 6.3.1・10.0.0 |
 | スタイリング | Tailwind CSS（`tailwindcss`・Vite で使うための `@tailwindcss/vite`） | 4.3.3 |
 | 静的解析 | oxlint | 1.85.0 |
-| 本番で画面を配る | Nginx（ビルドした画面のファイルを配り、`/api` をバックエンドに回す。設定は `nginx/default.conf.template`。手元では Docker の `nginx:1.28` で試す） | 1.28 |
+| 本番で画面を配る | Nginx（ビルドした画面のファイルを配り、`/api` をバックエンドに回す。設定は `nginx/default.conf.template`。手元では Docker の `nginx:1.30`（公式の安定版）で試す。EC2 に入る版は、EC2 を作るときに確かめてそろえる） | 1.30 |
 
 ### バックエンド（`backend/`）
 
@@ -74,7 +74,7 @@ Javaとspringbootを使えると企業が採用しやすい。データにもあ
 | リポジトリホスティング | GitHub | - |
 | 自動チェック（CI） | GitHub Actions（`.github/workflows/ci.yml`。PR と master へのプッシュで、フロントの lint・build と、バックエンドの `./gradlew check`（コンパイル・PMD・Checkstyle・テスト）を動かす） | actions/checkout v7・actions/setup-node v7・actions/setup-java v6・gradle/actions/setup-gradle v6 |
 | AWS の操作 | AWS CLI（`aws login --profile dothething` でログインする。リージョンは ap-southeast-2） | 2.37.9 |
-| IaC（設計図で AWS を作る） | Terraform（`infra/`。AWS 用の provider は hashicorp/aws。バージョンは `infra/.terraform.lock.hcl` に固定） | 1.16.5・hashicorp/aws 6.67.0 |
+| IaC（設計図で AWS を作る） | Terraform（`infra/`。`main.tf`：provider の設定・`variables.tf`：変数・`vpc.tf`：VPC・`outputs.tf`：作ったあとに見せる値。台帳（state）はこの PC の中に置き、Git に入れない。AWS 用の provider は hashicorp/aws。バージョンは `infra/.terraform.lock.hcl` に固定） | 1.16.5・hashicorp/aws 6.67.0 |
 
 ## 起動方法
 

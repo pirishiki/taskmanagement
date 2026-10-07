@@ -7,6 +7,10 @@
 *.tfstate
 *.tfstate.*
 
+# plan の結果を保存したファイル（terraform plan -out=tfplan）。台帳と同じく、秘密が入ることがある
+tfplan
+*.tfplan
+
 # パスワードなどの値を入れるファイル
 *.tfvars
 *.tfvars.json
