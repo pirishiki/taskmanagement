@@ -20,7 +20,7 @@ services:
   # profiles を付けたので、ふだんの docker compose up -d では起動しない
   # 試すとき：frontend で npm run build → docker compose --profile nginx up -d → http://localhost を開く
   nginx:
-    image: nginx:1.28
+    image: nginx:1.30
     profiles: ["nginx"]
     environment:
       # 設定のひな形の空欄 ${BACKEND_ORIGIN} を埋める（箱の外の PC で動くバックエンド）
