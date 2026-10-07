@@ -1,0 +1,17 @@
+# 本番（EC2）で画面を配る Nginx の設定（イシュー #53）
+# Nginx は受付係：画面のファイルは自分で返し、/api で始まる注文だけバックエンド（Spring Boot）に回す
+# ${BACKEND_ORIGIN} は、使う場所に合わせてあとから埋める空欄
+#   手元の Docker：http://host.docker.internal:8080
+#   EC2　　　　　：http://127.0.0.1:8080
+server {
+    listen 80;
+
+    # 画面のファイル（frontend で npm run build してできた dist/ の中身）の置き場所
+    root /usr/share/nginx/html;
+    index index.html;
+
+    # /api で始まる注文は、バックエンドに回す
+    location /api/ {
+        proxy_pass ${BACKEND_ORIGIN};
+    }
+}

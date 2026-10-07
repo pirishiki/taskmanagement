@@ -16,5 +16,22 @@ services:
       timeout: 5s
       retries: 5
 
+  # 本番（EC2）と同じ形を手元で試すための Nginx（イシュー #53）
+  # profiles を付けたので、ふだんの docker compose up -d では起動しない
+  # 試すとき：frontend で npm run build → docker compose --profile nginx up -d → http://localhost を開く
+  nginx:
+    image: nginx:1.28
+    profiles: ["nginx"]
+    environment:
+      # 設定のひな形の空欄 ${BACKEND_ORIGIN} を埋める（箱の外の PC で動くバックエンド）
+      BACKEND_ORIGIN: http://host.docker.internal:8080
+    ports:
+      - "80:80"
+    volumes:
+      # 設定のひな形。起動するときに空欄が埋められ、/etc/nginx/conf.d/default.conf になる
+      - ./nginx/default.conf.template:/etc/nginx/templates/default.conf.template:ro
+      # ビルドした画面のファイル（メニュー表の棚）
+      - ./frontend/dist:/usr/share/nginx/html:ro
+
 volumes:
   pgdata:
