@@ -9,6 +9,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.Clock;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -42,9 +43,13 @@ public class TaskService {
     // タスクの置き場所（列）が本当にあるかを確かめたり、読み込みで列を作り直したりするために使う
     private final BoardColumnRepository columnRepository;
 
-    public TaskService(TaskRepository taskRepository, BoardColumnRepository columnRepository) {
+    // 「今日」や「今」を決める壁の時計（日本時間。ClockConfig）。サーバーの時計（LocalDate.now()）は使わない
+    private final Clock clock;
+
+    public TaskService(TaskRepository taskRepository, BoardColumnRepository columnRepository, Clock clock) {
         this.taskRepository = taskRepository;
         this.columnRepository = columnRepository;
+        this.clock = clock;
     }
 
     // タスクを取ってくる。keyword・priorities・due は、どれも省略できる（null なら、その条件では絞らない）
@@ -54,7 +59,7 @@ public class TaskService {
         Specification<Task> conditions = Specification.allOf(
                 TaskSpecifications.textContains(keyword),
                 TaskSpecifications.priorityIn(priorities),
-                TaskSpecifications.dueMatches(due, LocalDate.now()));
+                TaskSpecifications.dueMatches(due, LocalDate.now(clock)));
         // 並び順は、列（columnId）ごとにまとめ、その中は sortOrder の小さい順
         return taskRepository.findAll(conditions, Sort.by("columnId", "sortOrder"));
     }
@@ -77,7 +82,7 @@ public class TaskService {
                                 .map(TaskFileItem::from)
                                 .toList()))
                 .toList();
-        return new TaskFile(TaskFile.CURRENT_VERSION, LocalDateTime.now(), columns, null);
+        return new TaskFile(TaskFile.CURRENT_VERSION, LocalDateTime.now(clock), columns, null);
     }
 
     // 読み込み用：今の列とタスクを全部消して、ファイル（TaskFile）の列とタスクに置き換える

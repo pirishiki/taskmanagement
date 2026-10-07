@@ -1,5 +1,6 @@
 package com.taskmanagement.backend.task;
 
+import com.taskmanagement.backend.ClockConfig;
 import com.taskmanagement.backend.TestcontainersConfiguration;
 import com.taskmanagement.backend.column.BoardColumn;
 import com.taskmanagement.backend.column.BoardColumnRepository;
@@ -318,7 +319,7 @@ class TaskApiTest {
     @DisplayName("due は、overdue なら今日より前、week なら今日〜今日＋6日、none なら期限なしのタスクだけが返る")
     void filterByDue() {
         // 準備：境目の日付を1件ずつ（今日より前、今日、今日＋6日、今日＋7日、期限なし）
-        LocalDate today = LocalDate.now();
+        LocalDate today = LocalDate.now(ClockConfig.ZONE);
         saveTask("昨日まで", TaskPriority.MEDIUM, today.minusDays(1));
         saveTask("今日まで", TaskPriority.MEDIUM, today);
         saveTask("6日後まで", TaskPriority.MEDIUM, today.plusDays(6));
@@ -506,7 +507,7 @@ class TaskApiTest {
         // 確かめる：/{id} ではなく書き出しの入口に届き、ファイルとして保存される札が付いている
         assertThat(result).hasStatus(HttpStatus.OK);
         assertThat(result).headers().hasValue(HttpHeaders.CONTENT_DISPOSITION,
-                "attachment; filename=\"tasks-" + LocalDate.now() + ".json\"");
+                "attachment; filename=\"tasks-" + LocalDate.now(ClockConfig.ZONE) + ".json\"");
         assertThat(result).bodyJson().extractingPath("$.version").isEqualTo(2);
         assertThat(result).bodyJson().extractingPath("$.columns[*].name").asArray()
                 .containsExactly("やるべきこと", "進行中", "終わったこと");
