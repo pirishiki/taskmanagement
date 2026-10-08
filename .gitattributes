@@ -1,0 +1,4 @@
+# EC2（Linux）で動かすファイルは、行の終わりをいつも Linux の形（LF）にする（イシュー #61）
+# Windows の形（CRLF）になると、Linux では「見えない文字」が増えて動かなくなる
+*.sh      text eol=lf
+*.service text eol=lf

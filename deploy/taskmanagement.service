@@ -1,0 +1,39 @@
+# アプリ（Spring Boot）を EC2 で動かし続けるための設定（systemd。イシュー #61）
+# install.sh が /etc/systemd/system/ に置く
+#   状態を見る：sudo systemctl status taskmanagement
+#   記録を見る：sudo journalctl -u taskmanagement -n 100
+#   再起動　　：sudo systemctl restart taskmanagement（RDS の合いカギを受け取り直すときも）
+
+[Unit]
+Description=taskmanagement (Spring Boot)
+# ネットワークがつながってから起動する（金庫と RDS に話しかけるため）
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+# アプリ専用の利用者で動かす（ec2-user や root の権限を持たせない）
+User=taskmanagement
+Group=taskmanagement
+# RDS の住所と金庫の場所（パスワードそのものではない）
+EnvironmentFile=/etc/taskmanagement/app.env
+ExecStart=/opt/taskmanagement/start.sh
+
+# 落ちたら 10 秒後に起こし直す
+Restart=on-failure
+RestartSec=10
+# 止めるときに Java が後片付けをする時間を待つ
+TimeoutStopSec=30
+# Spring Boot は「止まって」と言われると 143 番で終わる。これを失敗として扱わない
+SuccessExitStatus=143
+
+# 守り：アプリの部屋のほかは書き換えられないようにする
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+StateDirectory=taskmanagement
+Environment=HOME=/var/lib/taskmanagement
+
+[Install]
+# EC2 を起動したら、自動でアプリも起動する
+WantedBy=multi-user.target
