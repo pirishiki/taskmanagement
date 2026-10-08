@@ -1,6 +1,6 @@
 # AWS に置くための設計図（Terraform）
 # このファイルは土台（通訳さん＝provider の設定）。作るものは役割ごとに別のファイルに書く
-#   variables.tf：変数　vpc.tf：VPC（敷地）　outputs.tf：作ったあとに見せる値
+#   variables.tf：変数　vpc.tf：VPC（敷地）　rds.tf：RDS（データベース）　outputs.tf：作ったあとに見せる値
 
 terraform {
   # Terraform 本体のバージョン（古い Terraform で動かして、書き方が通じないのを防ぐ）
