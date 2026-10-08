@@ -1,9 +1,9 @@
 # RDS：AWS が面倒を見てくれる PostgreSQL（イシュー #59）。作った時点から、時間ごとにお金がかかる
 #
 #   VPC
-#   ├─ パブリックサブネット 2a　… EC2 を置く（まだない）
+#   ├─ パブリックサブネット 2a　… EC2（ec2.tf）
 #   ├─ プライベートサブネット 2a ─┐
-#   └─ プライベートサブネット 2b ─┴─ DB サブネットグループ ── RDS（門番：今はだれも通さない）
+#   └─ プライベートサブネット 2b ─┴─ DB サブネットグループ ── RDS（門番：EC2 からの 5432 番だけ）
 #
 # 練習なので、お金がかからないことを一番にした。作業の日の終わりに RDS だけ destroy し、次の作業の日に apply する
 #   terraform destroy -target=aws_db_instance.main
@@ -19,8 +19,8 @@ resource "aws_db_subnet_group" "main" {
   }
 }
 
-# RDS 専用の門番。ingress（入口）も egress（出口）も書かない＝全部止める
-# 通す相手（EC2）がまだないので、今はだれも通さない。EC2 の段階で「EC2 から 5432 番だけ」を足す
+# RDS 専用の門番。ここには ingress（入口）も egress（出口）も書かない
+# 入口のルール（EC2 の門番からの 5432 番だけ）は、EC2 と一緒に ec2.tf に書いた（イシュー #61）
 resource "aws_security_group" "rds" {
   name        = "${var.project_name}-rds-sg"
   description = "RDS for PostgreSQL. Ingress only from the app EC2 (added later)"

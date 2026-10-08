@@ -25,3 +25,13 @@ output "db_endpoint" {
 output "db_master_secret_arn" {
   value = aws_db_instance.main.master_user_secret[0].secret_arn
 }
+
+# EC2 の名前（Session Manager の通路で入るときに使う：ssh <この名前>）
+output "ec2_instance_id" {
+  value = aws_instance.app.id
+}
+
+# 家のブラウザで開く住所（80 番。家の IP からだけ見られる）
+output "app_url" {
+  value = "http://${aws_instance.app.public_ip}"
+}
