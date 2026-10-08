@@ -75,9 +75,9 @@ jobs:
           tflint() { docker run --rm -v "$PWD/infra:/data" -w /data -e GITHUB_TOKEN -e TFLINT_PLUGIN_DIR=/data/.tflint.d ghcr.io/terraform-linters/tflint:v0.64.0 "$@"; }
           tflint --init
           tflint --format=compact
-      # 設計図の防犯診断。指摘が 1 つでもあれば失敗。わざとのものは、設計図の #trivy:ignore と infra/.trivyignore.yaml に理由を書く
+      # 設計図の防犯診断。指摘が 1 つでもあれば失敗。わざとのものは、設計図の部品の上に #trivy:ignore と理由を書く
       - name: Trivy
-        run: docker run --rm -v "$PWD:/src" -w /src aquasec/trivy:0.75.0 config --quiet --exit-code 1 --ignorefile infra/.trivyignore.yaml infra
+        run: docker run --rm -v "$PWD:/src" -w /src aquasec/trivy:0.75.0 config --quiet --exit-code 1 infra
       # デプロイの手順（シェル）の校正係。GitHub のサーバーには ShellCheck が最初から入っている
       - name: ShellCheck
         run: shellcheck deploy/*.sh

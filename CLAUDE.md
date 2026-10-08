@@ -35,7 +35,7 @@
    - `gh pr create` で PR を作る。本文には `Closes #<イシュー番号>` を書く。こう書くと、マージしたときにイシューが自動で閉じる。
    - PR を作ったら、`gh pr checks <PR番号> --watch` で、3つの自動チェックが成功するのを確かめる。
      - 失敗（❌）したら、表示されたエラーを直してプッシュし直す。チェックはもう一度自動で動く。
-     - プッシュする前に、手元でも同じチェックを動かせる。`frontend` で `npm run lint` と `npm run build`、`backend` で `./gradlew check`（コンパイル・PMD・Checkstyle・テスト。テストは Testcontainers が Docker で DB を用意するので、Docker Desktop を起動しておく）。`infra` は、`infra` で `terraform fmt -check`・`terraform validate`・`tflint`（初回は `tflint --init`）、リポジトリの一番上で `trivy config --ignorefile infra/.trivyignore.yaml infra`、`shellcheck deploy/*.sh`（道具は winget で入れてある。`ci.yml` と同じ Docker イメージでも動かせる）。
+     - プッシュする前に、手元でも同じチェックを動かせる。`frontend` で `npm run lint` と `npm run build`、`backend` で `./gradlew check`（コンパイル・PMD・Checkstyle・テスト。テストは Testcontainers が Docker で DB を用意するので、Docker Desktop を起動しておく）。`infra` は、スキル `/infra-check`（`.claude/skills/infra-check/SKILL.md`）で、同じ道具を手元で動かし、指摘を 1 つずつ決める。
      - チェックの中身は `.github/workflows/ci.yml` にある。ジョブの名前を変えるときは、`protect-master` の必須チェックの名前も一緒に変える。変えないと、来ないチェックを待ち続けて、どの PR もマージできなくなる。
    - **マージはユーザーが GitHub の画面で行う。** Claude Code からは `gh pr merge` が禁止されていて（`~/.claude/settings.json` の permissions.deny）、マージできない。
    - マージのあとの流れ：ユーザーが「マージした」と伝える → Claude が `git switch master` → `git pull` で最新化する。
