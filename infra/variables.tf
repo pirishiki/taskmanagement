@@ -2,15 +2,17 @@
 
 # 作るものの名前の頭に付ける文字（例：taskmanagement-vpc）
 variable "project_name" {
-  type    = string
-  default = "taskmanagement"
+  description = "作るものの名前の頭に付ける文字（例：taskmanagement-vpc）"
+  type        = string
+  default     = "taskmanagement"
 }
 
 # 画面（80 番）を見てよい、家の IP アドレス（例：203.0.113.10/32。/32＝その 1 台だけ）
 # 住んでいる場所の手がかりになるので、値は Git に入らない terraform.tfvars に書く
 # 家の IP は変わることがある（ルーターの再起動など）。変わったら tfvars を直して apply する
 variable "home_ip_cidr" {
-  type = string
+  description = "画面（80 番）を見てよい家の IP アドレス。「家の IP/32」の形（値は terraform.tfvars に書く）"
+  type        = string
 
   # 世界中（0.0.0.0/0）を入れてしまう事故を防ぐ。/32（1 台だけ）しか受け付けない
   validation {
@@ -21,5 +23,6 @@ variable "home_ip_cidr" {
 
 # EC2 のドアに取り付ける錠前（SSH の公開鍵 .pub）のファイルの場所。鍵（秘密鍵）ではない
 variable "ssh_public_key_path" {
-  type = string
+  description = "EC2 のドアに取り付ける SSH の公開鍵（.pub）のファイルの場所。秘密鍵ではない"
+  type        = string
 }

@@ -29,6 +29,9 @@ resource "aws_vpc_security_group_ingress_rule" "ec2_http_from_home" {
 }
 
 # 出口：443 番（HTTPS）で外へ。Session Manager・Java と Nginx のダウンロード・金庫（Secrets Manager）に使う
+# Trivy の指摘（出口がどこでも）は、わざと（イシュー #63）：NAT ゲートウェイも VPC エンドポイント（1 つ 1 時間 約 0.01 USD、
+# 3〜4 個要る）も作らないので、外の AWS のサービスと nginx.org に出るのに要る。入口ではない（入口は 80 番を家の IP だけ）
+#trivy:ignore:AWS-0104
 resource "aws_vpc_security_group_egress_rule" "ec2_https_out" {
   security_group_id = aws_security_group.ec2.id
   description       = "HTTPS out (Session Manager, packages, Secrets Manager)"

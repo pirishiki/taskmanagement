@@ -21,7 +21,15 @@ id taskmanagement >/dev/null 2>&1 || useradd --system --no-create-home --shell /
 
 # 2. アプリ本体と、起動の手順書を /opt/taskmanagement に置く
 install -d -m 755 /opt/taskmanagement
-jar=$(ls "$SRC"/backend-*.jar | grep -v -- '-plain\.jar$' | head -1)
+# backend-*.jar のうち、部品だけの箱（-plain.jar）ではないものを 1 つ選ぶ
+jar=""
+for f in "$SRC"/backend-*.jar; do
+  case "$f" in
+    *-plain.jar) ;;
+    *) jar="$f" ;;
+  esac
+done
+[ -f "$jar" ] || { echo "backend-*.jar が $SRC にありません（./gradlew bootJar して scp で送る）" >&2; exit 1; }
 install -m 644 "$jar" /opt/taskmanagement/app.jar
 install -m 755 "$SRC/deploy/start.sh" /opt/taskmanagement/start.sh
 
@@ -40,7 +48,9 @@ cp -r "$SRC"/dist/. /usr/share/nginx/html/
 chmod -R a+rX /usr/share/nginx/html
 
 # 5. Nginx の設定（#53 のひな形）。空欄 ${BACKEND_ORIGIN} を、同じ家の中の Spring Boot（127.0.0.1:8080）で埋める
-sed 's|${BACKEND_ORIGIN}|http://127.0.0.1:8080|g' "$SRC/nginx/default.conf.template" > /etc/nginx/conf.d/default.conf
+# 一重引用符はわざと：シェルに埋めさせず、「${BACKEND_ORIGIN}」という文字そのものを探す
+# shellcheck disable=SC2016
+sed's|${BACKEND_ORIGIN}|http://127.0.0.1:8080|g' "$SRC/nginx/default.conf.template" > /etc/nginx/conf.d/default.conf
 nginx -t
 systemctl reload nginx
 
