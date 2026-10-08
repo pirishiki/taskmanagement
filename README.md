@@ -72,7 +72,7 @@ Javaとspringbootを使えると企業が採用しやすい。データにもあ
 | バージョン管理 | Git | 2.56.0 |
 | コンテナ | Docker（Docker Desktop。DB と、テストの Testcontainers と、本番の形を試す Nginx が使う） | 29.8.0 |
 | リポジトリホスティング | GitHub | - |
-| 自動チェック（CI） | GitHub Actions（`.github/workflows/ci.yml`。PR と master へのプッシュで、フロントの lint・build と、バックエンドの `./gradlew check`（コンパイル・PMD・Checkstyle・テスト）を動かす） | actions/checkout v7・actions/setup-node v7・actions/setup-java v6・gradle/actions/setup-gradle v6 |
+| 自動チェック（CI） | GitHub Actions（`.github/workflows/ci.yml`。PR と master へのプッシュで、フロントの lint・build と、バックエンドの `./gradlew check`（コンパイル・PMD・Checkstyle・テスト）と、AWS の設計図とデプロイの手順の品質チェック（`terraform fmt`・`validate`・TFLint・Trivy・ShellCheck）を動かす） | actions/checkout v7・actions/setup-node v7・actions/setup-java v6・gradle/actions/setup-gradle v6・Docker イメージ hashicorp/terraform 1.16.5・ghcr.io/terraform-linters/tflint v0.64.0（AWS のルール 0.43.0）・aquasec/trivy 0.75.0 |
 | AWS の操作 | AWS CLI（`aws login --profile dothething` でログインする。リージョンは ap-southeast-2） | 2.37.9 |
 | IaC（設計図で AWS を作る） | Terraform（`infra/`。`main.tf`：provider の設定・`variables.tf`：変数・`vpc.tf`：VPC・`outputs.tf`：作ったあとに見せる値。台帳（state）はこの PC の中に置き、Git に入れない。AWS 用の provider は hashicorp/aws。バージョンは `infra/.terraform.lock.hcl` に固定） | 1.16.5・hashicorp/aws 6.67.0 |
 

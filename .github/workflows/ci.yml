@@ -52,3 +52,32 @@ jobs:
       # check は、コンパイル・PMD（バグになりやすい書き方）・Checkstyle（書き方のそろい）・テストをまとめて動かす
       # テストの DB は Testcontainers が Docker で用意する（GitHub のサーバーには Docker が最初から入っている）
       - run: ./gradlew check
+
+  # AWS の設計図（infra/）とデプロイの手順（deploy/）の品質チェック（イシュー #63）。AWS には何もしない（ファイルを読むだけ）
+  # 道具は、手元と同じ版の公式の Docker イメージで動かす（版を固定して、勝手にルールが変わらないようにする）
+  infra:
+    name: infra（Terraform・TFLint・Trivy・ShellCheck）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      # 書き方の形（fmt）と文法（validate）。validate のために通訳さん（provider）を取ってくる。台帳（state）は使わない
+      - name: terraform fmt / validate
+        run: |
+          tf() { docker run --rm -v "$PWD/infra:/w" -w /w hashicorp/terraform:1.16.5 "$@"; }
+          tf fmt -check -recursive
+          tf init -backend=false -input=false
+          tf validate
+      # 設計図の校正係（infra/.tflint.hcl のルール）。AWS のルールを取ってくるのに GitHub の通行証を使う（回数制限を避ける）
+      - name: TFLint
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          tflint() { docker run --rm -v "$PWD/infra:/data" -w /data -e GITHUB_TOKEN -e TFLINT_PLUGIN_DIR=/data/.tflint.d ghcr.io/terraform-linters/tflint:v0.64.0 "$@"; }
+          tflint --init
+          tflint --format=compact
+      # 設計図の防犯診断。指摘が 1 つでもあれば失敗。わざとのものは、設計図の部品の上に #trivy:ignore と理由を書く
+      - name: Trivy
+        run: docker run --rm -v "$PWD:/src" -w /src aquasec/trivy:0.75.0 config --quiet --exit-code 1 infra
+      # デプロイの手順（シェル）の校正係。GitHub のサーバーには ShellCheck が最初から入っている
+      - name: ShellCheck
+        run: shellcheck deploy/*.sh
