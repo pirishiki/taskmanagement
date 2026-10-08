@@ -15,3 +15,13 @@ output "public_subnet_id" {
 output "private_subnet_ids" {
   value = [aws_subnet.private_a.id, aws_subnet.private_b.id]
 }
+
+# RDS の接続先（住所と番号）。アプリの DB_URL に使う：jdbc:postgresql://<住所>:<番号>/taskdb
+output "db_endpoint" {
+  value = "${aws_db_instance.main.address}:${aws_db_instance.main.port}"
+}
+
+# パスワードをしまった金庫（Secrets Manager）の場所。パスワードそのものではない
+output "db_master_secret_arn" {
+  value = aws_db_instance.main.master_user_secret[0].secret_arn
+}
