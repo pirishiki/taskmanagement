@@ -43,6 +43,8 @@ dependencies {
 
 // ./gradlew pmdMain pmdTest で動く（./gradlew check にも含まれる）。1件でも見つかると失敗する
 pmd {
+    // 版を書かないと Gradle のおまかせ版（Gradle を上げても古いまま）で動くので、明示する
+    toolVersion = '7.28.0'
     // PMD が用意している「まず使うならこれ」という規則のセット
     ruleSets = ['rulesets/java/quickstart.xml']
     // 見つかったものを、画面（コンソール）にも出す
@@ -52,7 +54,7 @@ pmd {
 // ./gradlew checkstyleMain checkstyleTest で動く（./gradlew check にも含まれる）。1件でも見つかると失敗する
 // 決まりは config/checkstyle/checkstyle.xml に書いてある（Gradle が最初に探す場所なので、場所の指定はいらない）
 checkstyle {
-    toolVersion = '14.1.0'
+    toolVersion = '14.3.0'
     // 決まりの重さが「警告」のものも、1件でもあれば失敗にする
     maxWarnings = 0
 }
