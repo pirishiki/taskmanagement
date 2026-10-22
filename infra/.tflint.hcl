@@ -10,6 +10,6 @@ plugin "terraform" {
 # AWS のルール（使えないインスタンスの大きさ・まちがった値など）
 plugin "aws" {
   enabled = true
-  version = "0.43.0"
+  version = "0.49.0"
   source  = "github.com/terraform-linters/tflint-ruleset-aws"
 }

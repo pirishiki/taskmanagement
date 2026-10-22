@@ -63,7 +63,7 @@ jobs:
       # 書き方の形（fmt）と文法（validate）。validate のために通訳さん（provider）を取ってくる。台帳（state）は使わない
       - name: terraform fmt / validate
         run: |
-          tf() { docker run --rm -v "$PWD/infra:/w" -w /w hashicorp/terraform:1.16.5 "$@"; }
+          tf() { docker run --rm -v "$PWD/infra:/w" -w /w hashicorp/terraform:1.17.0 "$@"; }
           tf fmt -check -recursive
           tf init -backend=false -input=false
           tf validate
@@ -77,7 +77,7 @@ jobs:
           tflint --format=compact
       # 設計図の防犯診断。指摘が 1 つでもあれば失敗。わざとのものは、設計図の部品の上に #trivy:ignore と理由を書く
       - name: Trivy
-        run: docker run --rm -v "$PWD:/src" -w /src aquasec/trivy:0.75.0 config --quiet --exit-code 1 infra
+        run: docker run --rm -v "$PWD:/src" -w /src aquasec/trivy:0.76.1 config --quiet --exit-code 1 infra
       # デプロイの手順（シェル）の校正係。GitHub のサーバーには ShellCheck が最初から入っている
       - name: ShellCheck
         run: shellcheck deploy/*.sh
