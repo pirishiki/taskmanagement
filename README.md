@@ -13,15 +13,15 @@ Javaとspringbootを使えると企業が採用しやすい。データにもあ
 
 | 区分 | 技術 | バージョン |
 | --- | --- | --- |
-| 実行環境 | Node.js | 24.21.0（LTS） |
-| フレームワーク | React（画面を作る `react`・ブラウザに表示する `react-dom`） | 19.3.0 |
-| 言語 | TypeScript | 6.0.3 |
-| ビルドツール | Vite | 8.3.0 |
-| ビルドツールの部品 | @vitejs/plugin-react（Vite で React を動かす） | 6.1.1 |
-| パッケージ管理 | npm | 11.19.0 |
+| 実行環境 | Node.js | 24.22.0（LTS） |
+| フレームワーク | React（画面を作る `react`・ブラウザに表示する `react-dom`） | 19.3.1 |
+| 言語 | TypeScript | 7.0.2 |
+| ビルドツール | Vite | 8.3.5 |
+| ビルドツールの部品 | @vitejs/plugin-react（Vite で React を動かす） | 6.1.2 |
+| パッケージ管理 | npm | 11.19.1 |
 | ドラッグ＆ドロップ | dnd-kit（@dnd-kit/core・@dnd-kit/sortable） | 6.3.1・10.0.0 |
 | スタイリング | Tailwind CSS（`tailwindcss`・Vite で使うための `@tailwindcss/vite`） | 4.3.3 |
-| 静的解析 | oxlint | 1.85.0 |
+| 静的解析 | oxlint | 1.89.0 |
 | 本番で画面を配る | Nginx（ビルドした画面のファイルを配り、`/api` をバックエンドに回す。設定は `nginx/default.conf.template`。手元では Docker の `nginx:1.30`（公式の安定版）で試す。EC2 に入る版は、EC2 を作るときに確かめてそろえる） | 1.30 |
 
 ### バックエンド（`backend/`）
@@ -30,11 +30,11 @@ Javaとspringbootを使えると企業が採用しやすい。データにもあ
 | --- | --- | --- |
 | 言語 | Java | 21（Eclipse Temurin 21.0.12.1、LTS） |
 | フレームワーク | Spring Boot | 4.1.1 |
-| ビルドツール | Gradle | 9.7.1（`gradlew`ラッパー経由） |
+| ビルドツール | Gradle | 9.8.2（`gradlew`ラッパー経由） |
 | ビルドツールの部品 | io.spring.dependency-management（Spring Boot が決めた組み合わせで部品を取り寄せる Gradle のプラグイン。`build.gradle` で直接指定） | 1.1.7 |
 | API形式 | REST API | - |
-| 静的解析 | PMD（Gradle の `pmd` プラグイン、規則は quickstart） | 7.24.0 |
-| 書き方のチェック | Checkstyle（Gradle の `checkstyle` プラグイン、規則は `config/checkstyle/checkstyle.xml`） | 14.1.0 |
+| 静的解析 | PMD（Gradle の `pmd` プラグイン、規則は quickstart） | 7.28.0 |
+| 書き方のチェック | Checkstyle（Gradle の `checkstyle` プラグイン、規則は `config/checkstyle/checkstyle.xml`） | 14.3.0 |
 
 主要な部品（ライブラリ）。Spring Boot 4.1.1 が組み合わせを決めて自動で取り寄せているもの。
 
@@ -72,9 +72,9 @@ Javaとspringbootを使えると企業が採用しやすい。データにもあ
 | バージョン管理 | Git | 2.56.0 |
 | コンテナ | Docker（Docker Desktop。DB と、テストの Testcontainers と、本番の形を試す Nginx が使う） | 29.8.0 |
 | リポジトリホスティング | GitHub | - |
-| 自動チェック（CI） | GitHub Actions（`.github/workflows/ci.yml`。PR と master へのプッシュで、フロントの lint・build と、バックエンドの `./gradlew check`（コンパイル・PMD・Checkstyle・テスト）と、AWS の設計図とデプロイの手順の品質チェック（`terraform fmt`・`validate`・TFLint・Trivy・ShellCheck）を動かす） | actions/checkout v7・actions/setup-node v7・actions/setup-java v6・gradle/actions/setup-gradle v6・Docker イメージ hashicorp/terraform 1.16.5・ghcr.io/terraform-linters/tflint v0.64.0（AWS のルール 0.43.0）・aquasec/trivy 0.75.0 |
+| 自動チェック（CI） | GitHub Actions（`.github/workflows/ci.yml`。PR と master へのプッシュで、フロントの lint・build と、バックエンドの `./gradlew check`（コンパイル・PMD・Checkstyle・テスト）と、AWS の設計図とデプロイの手順の品質チェック（`terraform fmt`・`validate`・TFLint・Trivy・ShellCheck）を動かす） | actions/checkout v7・actions/setup-node v7・actions/setup-java v6・gradle/actions/setup-gradle v6・Docker イメージ hashicorp/terraform 1.17.0・ghcr.io/terraform-linters/tflint v0.64.0（AWS のルール 0.49.0）・aquasec/trivy 0.76.1 |
 | AWS の操作 | AWS CLI（`aws login --profile dothething` でログインする。リージョンは ap-southeast-2） | 2.37.9 |
-| IaC（設計図で AWS を作る） | Terraform（`infra/`。`main.tf`：provider の設定・`variables.tf`：変数・`vpc.tf`：VPC・`outputs.tf`：作ったあとに見せる値。台帳（state）はこの PC の中に置き、Git に入れない。AWS 用の provider は hashicorp/aws。バージョンは `infra/.terraform.lock.hcl` に固定） | 1.16.5・hashicorp/aws 6.67.0 |
+| IaC（設計図で AWS を作る） | Terraform（`infra/`。`main.tf`：provider の設定・`variables.tf`：変数・`vpc.tf`：VPC・`outputs.tf`：作ったあとに見せる値。台帳（state）はこの PC の中に置き、Git に入れない。AWS 用の provider は hashicorp/aws。バージョンは `infra/.terraform.lock.hcl` に固定） | 1.17.0・hashicorp/aws 6.67.0 |
 
 ## 起動方法
 
