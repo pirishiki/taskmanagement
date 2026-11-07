@@ -8,10 +8,21 @@ export type Task = {
   priority: 'high' | 'medium' | 'low'
   dueDate: string | null
   sortOrder: number
+  // 版の番号（docs/同時編集の設計書.md の 3 節）。サーバーで中身が変わるたびに 1 上がる
+  // 書き込むとき（編集・完了・ドラッグ・並び替え・削除）は、画面が見ていたこの版を一緒に送る
+  // サーバーの今の版とちがえば、ほかの画面で先に変更されているので、サーバーは何も書かずに 409 を返す
+  version: number
 }
 
+// カードの編集（PUT）の結果。編集フォームが、閉じるか・入力を残すかを決めるために使う
+// ・'ok'：保存できた。フォームを閉じる
+// ・'failed'：失敗した（つながらない・入力ミス・503 など）。入力を残す
+// ・'conflict'：ほかの画面で先に変更されていた（409 の VERSION_CONFLICT）。入力を残し、current（いまの内容）を見せる
+// ・'gone'：ほかの画面で削除されていた（404）。カードは一覧から外れるので、フォームも閉じる
+export type UpdateResult = { kind: 'ok' } | { kind: 'failed' } | { kind: 'conflict'; current: Task } | { kind: 'gone' }
+
 // タスクを登録するとき（POST /api/tasks）に送る中身
-// id と sortOrder はバックエンドが決めるので、ここには入れない
+// id と sortOrder と version はバックエンドが決めるので、ここには入れない（新しいタスクの版は必ず 0）
 export type NewTask = {
   text: string
   columnId: number

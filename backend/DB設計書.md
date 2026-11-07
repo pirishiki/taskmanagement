@@ -4,9 +4,11 @@
 
 ## ER図
 
-列（`board_columns`）とタスク（`tasks`）と、番号札（`request_tokens`）の3つのテーブルでできている。1つの列に、0件以上のタスクが入る。
+列（`board_columns`）とタスク（`tasks`）と、番号札（`request_tokens`）と、ボードの番号（`board_meta`）の4つのテーブルでできている。1つの列に、0件以上のタスクが入る。
 
 `request_tokens` は、追加のときの番号札（`Idempotency-Key`）の記録。`resource_id` に作ったタスク・列の番号を書くが、外部キーにはしていない（作ったものがあとで消されても札は残し、同じ札が来たら404と答えるため）。そのため、ER図では線でつないでいない。
+
+`board_meta` は、DB ごとに1行だけの「ボードの番号」。ほかの表とはつながっていない（DB 全体に1つの番号のため）。
 
 ```mermaid
 erDiagram
@@ -24,6 +26,7 @@ erDiagram
         DOUBLE_PRECISION sort_order "列の並び順（左から）"
         BOOLEAN is_fixed "基本の列の印"
         BOOLEAN is_done "完了の列の印"
+        BIGINT version "版の番号"
     }
     tasks {
         BIGINT id PK "自動採番"
@@ -32,6 +35,11 @@ erDiagram
         VARCHAR priority "優先度"
         DATE due_date "期限（NULL可）"
         DOUBLE_PRECISION sort_order "列の中の並び順"
+        BIGINT version "版の番号"
+    }
+    board_meta {
+        SMALLINT id PK "いつも1"
+        UUID board_id "ボードの番号"
     }
 ```
 
@@ -39,7 +47,7 @@ erDiagram
 
 ### board_columns テーブル
 
-ボードの列1つを1行で表すテーブル。[BoardColumn.java](src/main/java/com/taskmanagement/backend/column/BoardColumn.java) のエンティティ定義に対応する。テーブルを作る SQL は [V3__create_board_columns.sql](src/main/resources/db/migration/V3__create_board_columns.sql)（`is_fixed` は [V4__add_fixed_to_board_columns.sql](src/main/resources/db/migration/V4__add_fixed_to_board_columns.sql) で追加）。
+ボードの列1つを1行で表すテーブル。[BoardColumn.java](src/main/java/com/taskmanagement/backend/column/BoardColumn.java) のエンティティ定義に対応する。テーブルを作る SQL は [V3__create_board_columns.sql](src/main/resources/db/migration/V3__create_board_columns.sql)（`is_fixed` は [V4__add_fixed_to_board_columns.sql](src/main/resources/db/migration/V4__add_fixed_to_board_columns.sql)、`version` は [V6__add_version_and_board_id.sql](src/main/resources/db/migration/V6__add_version_and_board_id.sql) で追加）。
 
 | カラム名 | 型 | NULL許可 | キー・制約 | 説明 |
 |---|---|---|---|---|
@@ -48,6 +56,7 @@ erDiagram
 | sort_order | DOUBLE PRECISION | 不可 | NOT NULL | 列の並び順（小さいほど左）。新しい列は「最大値＋1」（右端）。並べ替えると 0, 1, 2… と振り直す |
 | is_fixed | BOOLEAN | 不可 | NOT NULL、既定値 FALSE | 「基本の列」の印。やるべきこと・進行中・終わったことの3つだけが TRUE。基本の列は消せない |
 | is_done | BOOLEAN | 不可 | NOT NULL、既定値 FALSE、TRUE は全体で1つまで | 「完了の列」の印（終わったこと）。完了ボタン（○）を押したタスクは、この列へ移る |
+| version | BIGINT | 不可 | NOT NULL、既定値 0 | 版の番号（V6 で追加。イシュー #71）。name・sort_order が変わるたびに 1 上がる（JPA の `@Version`）。画面は見ていた版を送り、今の版とちがえば409（下の「版の番号」を参照） |
 
 - V3 で、今までの3つの列（やるべきこと・進行中・終わったこと）を入れ、「終わったこと」に完了の印を付けた。V4 で、この3つに基本の列の印を付けた
 - 基本の3列はカンバンの基本の流れ（未着手→作業中→完了）なので、消せない。消せるのは、あとから足した列（is_fixed が FALSE）だけ
@@ -55,7 +64,7 @@ erDiagram
 
 ### tasks テーブル
 
-タスク1件を1行で表すテーブル。[Task.java](src/main/java/com/taskmanagement/backend/task/Task.java) のエンティティ定義に対応する。テーブルを作る SQL は [V1__create_tasks_table.sql](src/main/resources/db/migration/V1__create_tasks_table.sql)（その後 V2・V3 で変更。下の「テーブルの変更の記録（Flyway）」を参照）。
+タスク1件を1行で表すテーブル。[Task.java](src/main/java/com/taskmanagement/backend/task/Task.java) のエンティティ定義に対応する。テーブルを作る SQL は [V1__create_tasks_table.sql](src/main/resources/db/migration/V1__create_tasks_table.sql)（その後 V2・V3・V6 で変更。下の「テーブルの変更の記録（Flyway）」を参照）。
 
 | カラム名 | 型 | NULL許可 | キー・制約 | 説明 |
 |---|---|---|---|---|
@@ -65,6 +74,7 @@ erDiagram
 | priority | VARCHAR(255) | 不可 | NOT NULL | 優先度（high, medium, low のどれか） |
 | due_date | DATE | 可 | - | 期限日。未設定の場合はNULL |
 | sort_order | DOUBLE PRECISION | 不可 | NOT NULL | 同じ列（column_id）内での並び順（小さいほど上。小数なので、2件の間（例：0 と 1 の間の 0.5）にも入れられる。削除や移動で番号が飛んだり、マイナスになったりすることがあり、0から連番とは限らない） |
+| version | BIGINT | 不可 | NOT NULL、既定値 0 | 版の番号（V6 で追加。イシュー #71）。text・column_id・priority・due_date・sort_order のどれかが変わるたびに 1 上がる（JPA の `@Version`）。画面は見ていた版を送り、今の版とちがえば409（下の「版の番号」を参照） |
 
 ※ VARCHAR の長さ（255）は、Flyway を入れる前に Hibernate がテーブルを自動で作っていたときの既定の長さ。V1 の SQL もそれに合わせている。
 ※ priority は、Java の中では enum（[TaskPriority.java](src/main/java/com/taskmanagement/backend/task/TaskPriority.java)）で持ち、DB には小文字の文字（`high` など）で保存する。変換は [TaskPriorityConverter.java](src/main/java/com/taskmanagement/backend/task/TaskPriorityConverter.java) が受け持つ（JPA 標準の `@Enumerated(EnumType.STRING)` は大文字の `HIGH` で保存するため使っていない）。
@@ -85,6 +95,19 @@ erDiagram
 - 札は、追加と同じトランザクションで記録する。追加が失敗すれば札も一緒に取り消されるので、同じ札で送り直せる
 - 同じ札が来たとき：指紋が同じなら、新しく作らず1回目に作ったものを返す（201）。指紋がちがえば409。1回目に作ったものが消されていれば404（作り直さない）。札の行はあるのに `resource_id` がまだ NULL なら503（少し待って同じ札で送り直してもらう。書き込みの鍵があるので、ふだんは起きない）
 - 書き込みは、トランザクションの始めにとる鍵（`pg_advisory_xact_lock`。アプリ全体で1つ）で1つずつ順番に動く（[WriteLockTransactionManager.java](src/main/java/com/taskmanagement/backend/write/WriteLockTransactionManager.java)）。鍵を待つのは上限（`app.write-lock.timeout`、ふだんは5秒）までで、こえたら503。テーブルではないので、ER図・テーブル定義には出てこない
+
+### board_meta テーブル
+
+ボードの番号を1行だけ持つテーブル（イシュー #71。決まりは [同時編集の設計書](../docs/同時編集の設計書.md) の5節）。テーブルを作る SQL は [V6__add_version_and_board_id.sql](src/main/resources/db/migration/V6__add_version_and_board_id.sql)。エンティティはなく、[BoardIds.java](src/main/java/com/taskmanagement/backend/board/BoardIds.java) が SQL（JdbcTemplate）で読む。
+
+| カラム名 | 型 | NULL許可 | キー・制約 | 説明 |
+|---|---|---|---|---|
+| id | SMALLINT | 不可 | PK（主キー）、CHECK（`id = 1`） | いつも 1。1行だけにするため |
+| board_id | UUID | 不可 | NOT NULL | ボードの番号。V6 を当てたとき `gen_random_uuid()` で作る。DB を作り直す（RDS の作り直し・`docker compose down -v`）と、Flyway が V6 を当て直すので新しくなる。テストデータの投入（`db/seed-test-data.sql`）でも新しくする。読み込み（import）では変えない |
+
+- サーバーは `/api/` のすべての返事にヘッダー `Board-Id` でこの番号を付ける。画面は最初に受け取った番号を覚え、書き込みのたびに送る。ちがえば、DB が作り直されているので409（`BOARD_CHANGED`）で止める（開いたままの古い画面が、番号〔id〕が同じ別のカードを書き換えないため）
+- 覚えておかずに、毎回 DB から読む（アプリを止めずに DB だけ作り直した・テストデータを投入したときも、すぐ気づけるように）
+- 比べるのは 2 回：Controller の前（[BoardIdInterceptor.java](src/main/java/com/taskmanagement/backend/board/BoardIdInterceptor.java)）と、書き込みの鍵をとった直後（[BoardIdGuard.java](src/main/java/com/taskmanagement/backend/board/BoardIdGuard.java)）。テストデータの投入は、1 つのトランザクションでアプリと同じ鍵をとるので、2 回目に比べてから書き終わるまでの間に番号は変わらない
 
 ### インデックス
 
@@ -120,12 +143,18 @@ text や必須のチェック（`@NotBlank`・`@Size`・`@NotNull` など）は�
 | 列を作る・名前を変える | name | 必須。空白だけは不可（`@NotBlank`）。255文字まで（`@Size`） | [BoardColumnRequest.java](src/main/java/com/taskmanagement/backend/column/BoardColumnRequest.java) |
 | 列を並べ替える | orderedIds | 全部の列の ID を1回ずつ（足りない・知らない・重なっていると400） | [BoardColumnService.java](src/main/java/com/taskmanagement/backend/column/BoardColumnService.java) |
 | 列を消す | id | 基本の列（is_fixed が TRUE）・タスクが入っている列は消せない（409） | 同上 |
+| PUT・PATCH・move・列の名前を変える | version | 省略可（省略すると版を確かめない）。送るなら数字（そうでないと JSON が読めず400）。今の版とちがえば409 | 各 Request（TaskRequest・TaskPatchRequest・MoveRequest・BoardColumnRequest）、TaskService・BoardColumnService |
+| タスク・列を消す | `?version=` | 省略可。送るなら数字（そうでないと400）。ある行の今の版とちがえば409（もうない番号は版を見ずに204） | TaskController・BoardColumnController、各 Service |
+| 並び替え（PUT /reorder）・列を並べ替える | versions | 省略可。送るなら、中は数字で空（null）を含めない。orderedIds と同じ数（ちがうと400）。1つでも今の版とちがえば409（何も動かさない） | ReorderRequest・BoardColumnOrderRequest、[VersionCounts.java](src/main/java/com/taskmanagement/backend/version/VersionCounts.java)、各 Service |
+| 書き込みすべて（POST・PUT・PATCH・DELETE） | ヘッダー `Board-Id` | 省略可。送るなら UUID の形（そうでないと400）。今のボードの番号とちがえば409（ほかのどの確かめよりも先） | [BoardIdInterceptor.java](src/main/java/com/taskmanagement/backend/board/BoardIdInterceptor.java) |
 
-違反した場合は `400 Bad Request`（列の削除は `409 Conflict`）が返り、DBには何も書き込まれない。DBの制約が「最低限の防波堤」、アプリ側のバリデーションが「実用的な入力チェック（空文字・長さ・決められた値も防ぎ、わかりやすい理由を返す）」という役割分担になっている。
+違反した場合は `400 Bad Request`（列の削除は `409 Conflict`）が返り、DBには何も書き込まれない。版・ボードの番号のずれ（409）も、何も書き込まない。DBの制約が「最低限の防波堤」、アプリ側のバリデーションが「実用的な入力チェック（空文字・長さ・決められた値も防ぎ、わかりやすい理由を返す）」という役割分担になっている。
 
 補足:
 - `id` は `GenerationType.IDENTITY` で、行を追加するたびにデータベース側が自動で採番する
 - `sort_order` はアプリ側（[TaskService.java](src/main/java/com/taskmanagement/backend/task/TaskService.java)）が自動計算して設定するため、API利用者が指定する項目ではない。新しいタスクや、PUT・PATCH で別の列に移ったタスクは「その列の最大値＋1」（列の一番下）になる。ドラッグ（move）で動かしたタスクは「上のタスクと、DB で本当にそのすぐ下のタスクの真ん中」になり、ほかのタスクの値は変えない（真ん中の値が作れないほど近いときだけ、その列を 0, 1, 2… と振り直す）
+- 版の番号（`version`）が上がるとき・上がらないとき（[同時編集の設計書](../docs/同時編集の設計書.md) の 3.2節）：行の中身（保存している項目）が1つでも変わったら、ちょうど 1 上がる。何も変わらなかったら（同じ名前・同じ列への PATCH など）上がらない。作ったとき・読み込み（import）のときは 0。**例外：ドラッグのときの番号の振り直し（すき間がなくなって、列を 0, 1, 2… にする）では上げない**。見た目の順番は変わらないので、ほかの画面が古い番号を持っていても困らないうえ、上げると、振り直しを知らない画面の次の操作がまちがって止まるため。そのため振り直しは、JPA を通さず、版に触らない一括の UPDATE（[TaskRepository.java](src/main/java/com/taskmanagement/backend/task/TaskRepository.java) の `renumber`）で行う。版はそのタスク・列だけのもので、カードを動かしても列の版は上がらない
+- 版を比べるのは Service で、書き込みの鍵をとったあと（比べてから書くまでの間に、ほかの書き込みが割り込まない）。JPA の `@Version` は安全網で、もし書くときにずれていれば例外になり、409 にする
 - `idx_tasks_column_id_sort_order` は [TaskRepository.java](src/main/java/com/taskmanagement/backend/task/TaskRepository.java) の `findTopByColumnIdOrderBySortOrderDescIdDesc`（列の一番下の1件）や、一覧の取得（`findTasks`。column_id→sort_order→id の順）の検索・ソートを速くするために付けた
 
 ## テーブルの変更の記録（Flyway）
@@ -139,13 +168,14 @@ text や必須のチェック（`@NotBlank`・`@Size`・`@NotNull` など）は�
 | `V3__create_board_columns.sql` | 列を自由に追加・削除できるようにする（イシュー #38）。board_columns テーブルを作って今までの3列を入れ、tasks の `status` を `column_id`（外部キー）に置き換える。今あるタスクは、status から対応する列の番号を書き写すので、消えない。インデックスも `idx_tasks_column_id_sort_order` に作り直す |
 | `V4__add_fixed_to_board_columns.sql` | board_columns に「基本の列」の印 `is_fixed` を足し、やるべきこと・進行中・終わったことに付ける。基本の3列を消せないようにするため（イシュー #38。要件定義書 No.13 は「基本の3列『以外の』列を自由に作れる」こと） |
 | `V5__create_request_tokens.sql` | 番号札（`Idempotency-Key`）を記録する request_tokens テーブルと、インデックス `idx_request_tokens_created_at` を作る。タスク・列の追加で、返事が届かずに押し直しても2件にしないため（イシュー #69） |
+| `V6__add_version_and_board_id.sql` | tasks・board_columns に版の番号 `version`（BIGINT・NOT NULL・既定値 0。今ある行は 0）を足し、ボードの番号の board_meta テーブル（1行だけ。`board_id` は `gen_random_uuid()`）を作る。開いたままの古い画面が、ほかの画面での変更を黙って上書きしない・DB の作り直しのあとに別のカードを書き換えないようにするため（イシュー #71） |
 
 - Hibernate はテーブルを作ったり直したりしない（`spring.jpa.hibernate.ddl-auto=validate`）。起動時にエンティティとテーブルが合っているかを確かめ、合わなければ起動を止める
 - Flyway を入れる前から使っていたデータ入りの DB は、`spring.flyway.baseline-on-migrate=true` により「V1 まで済み」（`BASELINE`）と記録され、V1 は流れない（データはそのまま）。空の DB（テスト・新しい環境）では V1 から流れる
 
 ### テーブルを変えるときの手順
 
-1. 新しい番号の SQL ファイルを足す（例：`V6__add_memo_column.sql` に `ALTER TABLE tasks ADD COLUMN memo VARCHAR(255);`）
+1. 新しい番号の SQL ファイルを足す（例：`V7__add_memo_column.sql` に `ALTER TABLE tasks ADD COLUMN memo VARCHAR(255);`）
 2. エンティティ（[Task.java](src/main/java/com/taskmanagement/backend/task/Task.java) など）を、変えたあとのテーブルに合わせる
 3. このファイルの ER 図とテーブル定義を直す
 

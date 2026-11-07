@@ -7,6 +7,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 
 import java.time.LocalDate;
 
@@ -39,6 +40,15 @@ public class Task {
     // 同じ列の中での並び順（小さいほど上）。小数なので、2枚のカードの間（例：0 と 1 の間の 0.5）にも入れられる
     @Column(nullable = false)
     private Double sortOrder;
+
+    // 版の番号（docs/同時編集の設計書.md の 3 節）。作ったときは 0。中身（上の 5 つの項目）が変わって保存されるたびに、
+    // JPA（Hibernate）が自動で 1 上げる。何も変わらなかったら上がらない
+    // 書くときは「UPDATE … WHERE version = 読んだときの版」になり、もしずれていれば例外になる（DB の安全網。4.5 節）
+    // 画面から送られた版と比べるのは TaskService（書き込みの鍵をとったあと）。アプリのコードからは書き換えない（set を用意しない）
+    // 例外：ドラッグのときの番号の振り直し（TaskRepository.renumber）は、版に触らない一括の UPDATE で行う
+    @Version
+    @Column(nullable = false)
+    private Long version;
 
     protected Task() {
         // JPA（Hibernate）が DB から読んだ行を Task に詰めるときに使う。アプリのコードからは呼ばない
@@ -94,5 +104,9 @@ public class Task {
 
     public void setSortOrder(Double sortOrder) {
         this.sortOrder = sortOrder;
+    }
+
+    public Long getVersion() {
+        return version;
     }
 }

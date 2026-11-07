@@ -12,9 +12,9 @@ import {
   type UniqueIdentifier,
 } from '@dnd-kit/core'
 import { sortableKeyboardCoordinates } from '@dnd-kit/sortable'
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import type { BoardColumn } from '../types/column'
-import type { AddResult, NewTask, SortCriterion, Task, TaskContent, TaskPatch } from '../types/task'
+import type { AddResult, NewTask, SortCriterion, Task, TaskContent, TaskPatch, UpdateResult } from '../types/task'
 import AddColumnForm from './AddColumnForm'
 import Column, { droppableIdPrefix } from './Column'
 import { TaskCardOverlay } from './TaskCard'
@@ -23,8 +23,11 @@ type Props = {
   // 並べる列（左から順）。App がバックエンドから取ってきたもの
   columns: BoardColumn[]
   tasks: Task[]
+  // 書き込み中のタスク・列の番号（返事が来るまで操作できない。docs/同時編集の設計書.md の 6.1 節）
+  busyTaskIds: ReadonlySet<number>
+  busyColumnIds: ReadonlySet<number>
   onAdd: (task: NewTask, idempotencyKey: string) => Promise<AddResult>
-  onUpdate: (id: number, task: TaskContent) => Promise<boolean>
+  onUpdate: (id: number, task: TaskContent, version: number) => Promise<UpdateResult>
   onPatch: (id: number, patch: TaskPatch) => void
   onDelete: (id: number) => void
   onMove: (taskId: number, toColumnId: number, toIndex: number) => void
@@ -39,9 +42,42 @@ function tasksIn(tasks: Task[], columnId: number) {
   return tasks.filter((task) => task.columnId === columnId).sort((a, b) => a.sortOrder - b.sortOrder)
 }
 
+// 編集フォームを開いているカードを、開いたときの列・位置に留めた一覧を作る
+// 編集中に、カードの中身が「いまの内容」（409 の current）や取り直しの結果に入れ替わって、別の列に移ったり、一覧から外れたりすると、
+// カードの部品が作り直されて、編集フォームと入力が黙って消えてしまうため（入力を残す、の決まり。設計書 6.2 節）
+// 中身（タスク名・版など）は新しいものを見せ、列と位置だけを留める。一覧から外れていたら、開いたときのカードを残す
+// 編集を閉じると留めるのをやめ、本当の列・位置に出る（一覧になければ消える）
+function keepEditingInPlace(tasks: Task[], editing: Task | null): Task[] {
+  if (editing === null) {
+    return tasks
+  }
+  if (!tasks.some((task) => task.id === editing.id)) {
+    return [...tasks, editing]
+  }
+  return tasks.map((task) =>
+    task.id === editing.id ? { ...task, columnId: editing.columnId, sortOrder: editing.sortOrder } : task,
+  )
+}
+
+// 編集フォームを開いているカードの列（開いたときの姿と、左から何番目だったか）を、列の一覧に残す
+// 編集中に、取り直しでその列がなくなる（ほかの画面で空の列が消された）と、列ごとカードの部品が消え、編集フォームと入力が
+// 黙って消えてしまうため。編集を閉じるまで、開いたときの列を同じ位置に描き続ける（閉じると、本当の列の一覧に戻る）
+function keepEditingColumn(
+  columns: BoardColumn[],
+  editingColumn: { column: BoardColumn; index: number } | null,
+): BoardColumn[] {
+  if (editingColumn === null || columns.some((column) => column.id === editingColumn.column.id)) {
+    return columns
+  }
+  const index = Math.min(editingColumn.index, columns.length)
+  return [...columns.slice(0, index), editingColumn.column, ...columns.slice(index)]
+}
+
 function Board({
   columns,
   tasks,
+  busyTaskIds,
+  busyColumnIds,
   onAdd,
   onUpdate,
   onPatch,
@@ -59,7 +95,25 @@ function Board({
   // null のときはドラッグしていないので、本物の tasks をそのまま表示する
   const [preview, setPreview] = useState<Task[] | null>(null)
   const [activeTask, setActiveTask] = useState<Task | null>(null)
-  const shown = preview ?? tasks
+  // 編集フォームを開いているカード（開いたときの姿）。開いていなければ null
+  const [editing, setEditing] = useState<Task | null>(null)
+  // そのカードがいた列（開いたときの姿と位置）。開いていなければ null
+  const [editingColumn, setEditingColumn] = useState<{ column: BoardColumn; index: number } | null>(null)
+  // 編集が終わったときに呼ぶ。useCallback で同じ関数を使い回す（カードの useEffect の依存に入るので、毎回作り直すと、
+  // 描き直しのたびに「終わった」が呼ばれてしまうため）
+  const endEditing = useCallback(() => {
+    setEditing(null)
+    setEditingColumn(null)
+  }, [])
+  // 編集を始めたとき：カードと、そのカードがいる列（と左から何番目か）を控える
+  function startEditing(task: Task) {
+    const index = columns.findIndex((column) => column.id === task.columnId)
+    setEditing(task)
+    setEditingColumn(index >= 0 ? { column: columns[index], index } : null)
+  }
+  const placed = keepEditingInPlace(tasks, editing)
+  const shownColumns = keepEditingColumn(columns, editingColumn)
+  const shown = preview ?? placed
 
   // どの操作でドラッグを始めるか
   // マウス：5px 以上動かしたらドラッグ開始（○ や ✎ をクリックしただけでドラッグにならないようにするため）
@@ -80,8 +134,8 @@ function Board({
 
   // つかんだとき：仮の一覧を作り、マウスに付いてくる分身のために、つかんだタスクを覚える
   function handleDragStart({ active }: DragStartEvent) {
-    setPreview(tasks)
-    setActiveTask(tasks.find((task) => task.id === active.id) ?? null)
+    setPreview(placed)
+    setActiveTask(placed.find((task) => task.id === active.id) ?? null)
   }
 
   // ドラッグ中に、別の列の上に来たとき：仮の一覧の中で、カードをその列へ移す
@@ -90,7 +144,7 @@ function Board({
       return
     }
     setPreview((prev) => {
-      const list = prev ?? tasks
+      const list = prev ?? placed
       const moving = list.find((task) => task.id === active.id)
       const toColumnId = columnIdOf(list, over.id)
       if (!moving || toColumnId === undefined || moving.columnId === toColumnId) {
@@ -150,18 +204,23 @@ function Board({
       onDragCancel={handleDragCancel}
     >
       <div className="flex items-start gap-4 overflow-x-auto">
-        {columns.map((column) => (
+        {/* 編集中のカードの列が、取り直しでなくなっていても、閉じるまで描く（keepEditingColumn） */}
+        {shownColumns.map((column) => (
           <Column
             key={column.id}
             column={column}
             tasks={tasksIn(shown, column.id)}
             doneColumnId={doneColumnId}
+            busyTaskIds={busyTaskIds}
+            deleting={busyColumnIds.has(column.id)}
             onAdd={onAdd}
             onUpdate={onUpdate}
             onPatch={onPatch}
             onDelete={onDelete}
             onSort={onSort}
             onDeleteColumn={onDeleteColumn}
+            onEditStart={startEditing}
+            onEditEnd={endEditing}
           />
         ))}
         {/* 一番右に「＋ 列を追加」。足した列は、このボタンのすぐ左（右端の列）に入る */}

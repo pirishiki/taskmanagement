@@ -1,6 +1,7 @@
 package com.taskmanagement.backend.column;
 
 import com.taskmanagement.backend.idempotency.RequestTokens;
+import com.taskmanagement.backend.version.VersionCounts;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -12,6 +13,7 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -48,26 +50,30 @@ public class BoardColumnController {
         return ResponseEntity.status(HttpStatus.CREATED).body(BoardColumnResponse.from(created));
     }
 
-    // 例：PUT /api/columns/order  { "orderedIds": [3, 1, 2] } → 列を、この順に左から並べ直す
+    // 例：PUT /api/columns/order  { "orderedIds": [3, 1, 2], "versions": [0, 0, 1] } → 列を、この順に左から並べ直す
+    // versions（同じ数・同じ順の版）は省略できる。数がちがえば 400、1 つでも今の版とちがえば 409（docs/同時編集の設計書.md の 4 節）
     // URL の "order" は、下の "/{id}" より先に選ばれる（Spring は、決まった文字の URL を優先する）
     @PutMapping("/order")
     public List<BoardColumnResponse> reorderColumns(@Valid @RequestBody BoardColumnOrderRequest request) {
-        return columnService.reorderColumns(request.orderedIds()).stream()
+        // 版の数は、書き込みの鍵をとる前（Service を呼ぶ前）に確かめる（入力チェックの 1 つ）
+        VersionCounts.requireSameCount(request.orderedIds(), request.versions());
+        return columnService.reorderColumns(request.orderedIds(), request.versions()).stream()
                 .map(BoardColumnResponse::from)
                 .toList();
     }
 
-    // 例：PUT /api/columns/2  { "name": "作業中" } → 列2の名前を変える
+    // 例：PUT /api/columns/2  { "name": "作業中", "version": 1 } → 列2の名前を変える。version（見ていた版）は省略できる
     @PutMapping("/{id}")
     public BoardColumnResponse renameColumn(@PathVariable Long id, @Valid @RequestBody BoardColumnRequest request) {
-        return BoardColumnResponse.from(columnService.renameColumn(id, request.name()));
+        return BoardColumnResponse.from(columnService.renameColumn(id, request.name(), request.version()));
     }
 
-    // 例：DELETE /api/columns/4 → 列4を消す。成功したら 204（中身なし）。もうない列でも 204（2 回目の削除も成功）
-    // 基本の列（やるべきこと・進行中・終わったこと）・中にタスクがいる列は消せない（409）
+    // 例：DELETE /api/columns/4?version=1 → 列4を消す。成功したら 204（中身なし）。もうない列でも 204（2 回目の削除も成功）
+    // version（見ていた版）は省略できる。列があるのに今の版とちがえば 409（VERSION_CONFLICT）
+    // 基本の列（やるべきこと・進行中・終わったこと）・中にタスクがいる列は消せない（409。code なし）
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteColumn(@PathVariable Long id) {
-        columnService.deleteColumn(id);
+    public ResponseEntity<Void> deleteColumn(@PathVariable Long id, @RequestParam(required = false) Long version) {
+        columnService.deleteColumn(id, version);
         return ResponseEntity.noContent().build();
     }
 }

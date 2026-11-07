@@ -6,6 +6,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 
 // 列1つを表す。DB の board_columns テーブルの1行に対応する
 // テーブルの形の正本は Flyway の SQL（V3__create_board_columns.sql）。ここを変えたら、SQL も足すこと
@@ -34,6 +35,12 @@ public class BoardColumn {
     // 作ったあとで変えることはないので、set のメソッドは用意しない
     @Column(name = "is_done", nullable = false)
     private boolean done;
+
+    // 版の番号（docs/同時編集の設計書.md の 3 節）。作ったときは 0。名前・並び順が変わって保存されるたびに、
+    // JPA（Hibernate）が自動で 1 上げる（タスクの Task.version と同じ仕組み）。アプリのコードからは書き換えない
+    @Version
+    @Column(nullable = false)
+    private Long version;
 
     protected BoardColumn() {
         // JPA（Hibernate）が DB から読んだ行を BoardColumn に詰めるときに使う。アプリのコードからは呼ばない
@@ -72,5 +79,9 @@ public class BoardColumn {
 
     public boolean isDone() {
         return done;
+    }
+
+    public Long getVersion() {
+        return version;
     }
 }

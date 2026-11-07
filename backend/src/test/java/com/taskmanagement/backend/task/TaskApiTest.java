@@ -249,7 +249,10 @@ class TaskApiTest {
                 .exchange();
 
         // 確かめる：B と D が座っていた席（1 と 3）を D・B の順に使う。A(0) と C(2) はそのまま
-        assertThat(result).hasStatus(HttpStatus.NO_CONTENT);
+        // 返事は 200 で、並べ直した 2 枚を送った順（D・B）に返す（docs/同時編集の設計書.md の 4.4 節。前は 204 だった）
+        assertThat(result).hasStatus(HttpStatus.OK);
+        assertThat(result).bodyJson().extractingPath("$[*].id").isEqualTo(List.of(d.getId().intValue(),
+                b.getId().intValue()));
         assertThat(taskRepository.findById(d.getId())).get()
                 .satisfies(task -> assertThat(task.getSortOrder()).isEqualTo(1.0));
         assertThat(taskRepository.findById(b.getId())).get()

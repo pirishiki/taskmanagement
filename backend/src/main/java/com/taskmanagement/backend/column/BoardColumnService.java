@@ -2,6 +2,7 @@ package com.taskmanagement.backend.column;
 
 import com.taskmanagement.backend.idempotency.RequestTokens;
 import com.taskmanagement.backend.task.TaskRepository;
+import com.taskmanagement.backend.version.VersionConflictException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -77,16 +78,21 @@ public class BoardColumnService {
     }
 
     // 列の名前を変える。列がなければ 404
-    public BoardColumn renameColumn(Long id, String name) {
+    // 版（version。null なら確かめない）が今の版とちがえば 409（current に列の今の状態）。確かめる順番は、ある（404）→ 版
+    public BoardColumn renameColumn(Long id, String name, Long version) {
         BoardColumn column = findOrThrow(id);
+        checkVersion(version, column);
         column.setName(name.trim());
         return columnRepository.save(column);
     }
 
     // 列を並べ替える。orderedIds は、全部の列の ID を、左から並べたい順に並べたもの
-    // 列は多くても数個なので、全部の列に 0, 1, 2… と番号を振り直す
+    // 列は多くても数個なので、全部の列に 0, 1, 2… と番号を振り直す（番号が変わった列だけ、保存のときに版が 1 上がる）
     // 足りない列・知らない列・同じ列が2回ある、のどれかなら 400
-    public List<BoardColumn> reorderColumns(List<Long> orderedIds) {
+    // versions（orderedIds と同じ順の版。null なら確かめない）が 1 つでもちがえば、どの列も動かさずに 409（current なし）
+    // 列の並べ替えだけは、ID がそろっているか（400）を版より先に見る（docs/同時編集の設計書.md の 4.4 節）
+    // ID がそろっていないと、どの版をどの列と比べるかが決められないため
+    public List<BoardColumn> reorderColumns(List<Long> orderedIds, List<Long> versions) {
         // 取ってきた列を「ID → 列」の表（Map）にしておくと、ID からすぐに引ける
         Map<Long, BoardColumn> columnsById = columnRepository.findAll().stream()
                 .collect(Collectors.toMap(BoardColumn::getId, Function.identity()));
@@ -98,6 +104,12 @@ public class BoardColumnService {
         }
 
         List<BoardColumn> ordered = orderedIds.stream().map(columnsById::get).toList();
+        if (versions != null) {
+            for (int i = 0; i < ordered.size(); i++) {
+                VersionConflictException.check(versions.get(i), ordered.get(i).getVersion(),
+                        VersionConflictException.COLUMN_ORDER, () -> null);
+            }
+        }
         for (int position = 0; position < ordered.size(); position++) {
             ordered.get(position).setSortOrder((double) position);
         }
@@ -109,12 +121,15 @@ public class BoardColumnService {
     // ・基本の列（やるべきこと・進行中・終わったこと）：カンバンの基本の流れなので残す。完了の列（終わったこと）もこれに入る
     // ・中にタスクがいる列：うっかりタスクを失わないように。先にタスクをほかの列へ移すか、消してもらう
     // （基本の列は消せないので、列が1つもなくなることも、完了ボタン（○）の移し先がなくなることもない）
-    public void deleteColumn(Long id) {
+    // version（見ていた版。null なら確かめない）は、列があるときだけ、上の 2 つより先に比べる（ちがえば 409・VERSION_CONFLICT）
+    // ほかの画面で名前を変えたばかりの列を、古い名前の確認のまま消さないため（docs/同時編集の設計書.md の 4.3・4.4 節）
+    public void deleteColumn(Long id, Long version) {
         Optional<BoardColumn> found = columnRepository.findById(id);
         if (found.isEmpty()) {
             return;
         }
         BoardColumn column = found.get();
+        checkVersion(version, column);
         if (column.isFixed()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "基本の列（やるべきこと・進行中・終わったこと）は消せません");
@@ -147,5 +162,12 @@ public class BoardColumnService {
     private BoardColumn findOrThrow(Long id) {
         return columnRepository.findById(id)
                 .orElseThrow(() -> new ColumnNotFoundException(id));
+    }
+
+    // 画面が見ていた版（expected。null なら省略＝確かめない）が、列の今の版とちがえば 409（current に列の今の状態）
+    // 書き込みの鍵をとったあとに呼ぶので、比べてから書くまでの間に、ほかの書き込みが割り込まない
+    private static void checkVersion(Long expected, BoardColumn column) {
+        VersionConflictException.check(expected, column.getVersion(), VersionConflictException.COLUMN,
+                () -> BoardColumnResponse.from(column));
     }
 }

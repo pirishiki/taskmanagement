@@ -16,10 +16,12 @@ import java.time.Duration;
 public class WriteLockConfig {
 
     // lockTimeout：書き込みの鍵を待つ時間の上限（application.properties の app.write-lock.timeout。例：5s）
+    // afterLockCheck：鍵をとった直後の確かめ（ボードの番号の 2 回目の確かめ BoardIdGuard。イシュー #71）。なければ何もしない
     @Bean
     public PlatformTransactionManager transactionManager(ObjectProvider<TransactionManagerCustomizers> customizers,
-            @Value("${app.write-lock.timeout}") Duration lockTimeout) {
-        WriteLockTransactionManager transactionManager = new WriteLockTransactionManager(lockTimeout);
+            @Value("${app.write-lock.timeout}") Duration lockTimeout, ObjectProvider<AfterLockCheck> afterLockCheck) {
+        WriteLockTransactionManager transactionManager = new WriteLockTransactionManager(lockTimeout,
+                afterLockCheck.getIfAvailable(() -> AfterLockCheck.NONE));
         customizers.ifAvailable(each -> each.customize(transactionManager));
         return transactionManager;
     }

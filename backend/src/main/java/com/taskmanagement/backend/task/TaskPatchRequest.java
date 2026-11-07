@@ -10,10 +10,12 @@ import java.time.LocalDate;
 // columnId は列の番号。その番号の列が本当にあるかは TaskService が確かめる（なければ 400）
 // priority は enum なので、決まった値以外は JSON を読む時点で断られる（400）
 // text は 255 文字まで（TaskRequest と同じ理由）
+// version は、画面が見ていた版（docs/同時編集の設計書.md の 4.1 節）。今の版とちがえば 409。省略なら確かめない
 public record TaskPatchRequest(
         @Pattern(regexp = "(?s).*\\S.*", message = "タスク名を入力してください")
         @Size(max = 255, message = "タスク名は255文字までにしてください") String text,
         Long columnId,
         TaskPriority priority,
-        LocalDate dueDate) {
+        LocalDate dueDate,
+        Long version) {
 }
