@@ -1,13 +1,14 @@
 -- 開発用のテストデータ
 -- 実行方法（taskmanagement フォルダで）:
 --   docker compose exec -T postgres psql -U postgres -d taskdb < db/seed-test-data.sql
--- 注意: 列（board_columns）とタスク（tasks）の中身をすべて消してから入れ直す（何度流しても同じ状態になる）
+-- 注意: 列（board_columns）とタスク（tasks）と、二重送信を防ぐ番号札（request_tokens）の中身をすべて消してから入れ直す（何度流しても同じ状態になる）
+-- 番号札も消す理由：番号を振り直すので、古い札が別のタスク・列を指してしまうのを防ぐため（イシュー #69）
 -- 前提: バックエンドを一度起動してテーブルが作られていること（テーブルは起動時に Flyway が db/migration の SQL で作る）
 
 SET client_encoding = 'UTF8';
 
 -- RESTART IDENTITY：番号の振り直し。列は 1・2・3 番から振られるので、下のタスクの column_id にその番号を書ける
-TRUNCATE tasks, board_columns RESTART IDENTITY;
+TRUNCATE tasks, board_columns, request_tokens RESTART IDENTITY;
 
 INSERT INTO board_columns (name, sort_order, is_fixed, is_done) VALUES
     ('やるべきこと', 0, TRUE, FALSE),  -- 1 番（基本の列）
