@@ -12,7 +12,7 @@ function AddColumnForm({ onAdd }: Props) {
   const [open, setOpen] = useState(false)
   const [name, setName] = useState('')
   // 番号札と送信中の管理（送信中は 2 回目の送信を無視する）
-  const { sending, submit } = useIdempotentSubmit(onAdd)
+  const { sending, submit, submitError } =useIdempotentSubmit(onAdd)
 
   // ✕ ボタン、または Esc キーでフォームを閉じる（入力途中の内容は捨てる）
   // 送信中は閉じない（閉じたあとに失敗すると、捨てたはずの入力が戻ってしまうため）
@@ -76,6 +76,8 @@ function AddColumnForm({ onAdd }: Props) {
         placeholder="列の名前を入力…"
         className="rounded bg-white px-3 py-2 text-sm shadow-sm outline-none"
       />
+      {/* 番号札が作れなかったときなど、フォームの中で出す赤いメッセージ */}
+      {submitError && <p className="text-sm text-red-600">{submitError}</p>}
       <div className="flex items-center gap-2">
         <button
           type="submit"

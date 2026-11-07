@@ -61,9 +61,17 @@ function isNotFound(error: unknown): boolean {
   return error instanceof ApiError && error.status === 404
 }
 
+// 追加の失敗のメッセージ。404 は、前に同じ札で作ったものが消されている（追加の API で 404 になるのはこの場合だけ）
+function addErrorMessage(error: unknown, action: string): string {
+  if (error instanceof ApiError && error.status === 404) {
+    return `${action}できませんでした。前に送ったものは消されています。もう一度押すと、新しく作ります。`
+  }
+  return errorMessage(error, action)
+}
+
 // 追加が失敗したとき、フォームに伝える結果を決める
 // 404（前に同じ札で作ったものが消されている）・409（同じ札で中身がちがう）は、同じ札で送り直しても必ず同じ失敗になる。
-// そのため番号札を取り替えさせる。それ以外（通信できない・503 など）は、同じ札のまま送り直せる
+// そのため番号札を取り替えさせる。それ以外（通信できない・503 〔札の行はあるが番号がまだない。待てば直る〕など）は、同じ札のまま送り直せる
 function addFailureResult(error: unknown): AddResult {
   if (error instanceof ApiError && (error.status === 404 || error.status === 409)) {
     return 'newKey'
@@ -95,7 +103,7 @@ function App() {
     const requestId = latestRequest.current
     const isLatest = () => requestId === latestRequest.current
 
-    fetchTasks(filters)
+    return fetchTasks(filters)
       .then((result) => {
         if (!isLatest()) {
           return // もっと新しい取得を頼んであるので、この古い結果は捨てる
@@ -118,7 +126,7 @@ function App() {
 
   // 列の一覧を取ってきて、画面のメモ（columns）を書き換える
   const loadColumns = useCallback(() => {
-    fetchColumns()
+    return fetchColumns()
       .then(setColumns)
       .catch((error) => {
         setError(errorMessage(error, '列を取得'))
@@ -140,12 +148,13 @@ function App() {
     return createTask(task, idempotencyKey)
       .then((created): AddResult => {
         // 今のタスク一覧の最後に、登録されたタスクを足す
-        setTasks((prev) => [...prev, created])
+        // 同じ id のタスクがすでに一覧にあれば（返事が届かず取り直したあとの送り直し）、足さずに入れ替える
+        setTasks((prev) => (prev.some((t) => t.id === created.id) ? prev.map((t) => (t.id === created.id ? created : t)) : [...prev, created]))
         setError(null)
         return 'ok'
       })
       .catch((error): AddResult => {
-        setError(errorMessage(error, 'タスクを追加'))
+        setError(addErrorMessage(error, 'タスクを追加'))
         return addFailureResult(error)
       })
   }
@@ -298,12 +307,13 @@ function App() {
   function handleAddColumn(name: string, idempotencyKey: string): Promise<AddResult> {
     return createColumn(name, idempotencyKey)
       .then((created): AddResult => {
-        setColumns((prev) => [...prev, created])
+        // 同じ id の列がすでにあれば、足さずに入れ替える（タスクの追加と同じ）
+        setColumns((prev) => (prev.some((c) => c.id === created.id) ? prev.map((c) => (c.id === created.id ? created : c)) : [...prev, created]))
         setError(null)
         return 'ok'
       })
       .catch((error): AddResult => {
-        setError(errorMessage(error, '列を追加'))
+        setError(addErrorMessage(error, '列を追加'))
         return addFailureResult(error)
       })
   }
@@ -344,10 +354,11 @@ function App() {
   // 終わる（成功・失敗とも）と解決する Promise を返す。ボタンの「送信中」の表示に使う
   function handleImport(file: File): Promise<void> {
     return importTasks(file)
-      .then(() => {
+      .then(async () => {
         setError(null)
-        loadColumns()
-        loadTasks(filters)
+        // 列とタスクの取り直しが終わるまで待つ（ボタンが先に戻ると、古い列へ追加して 400 になるため）
+        // 取り直しの失敗は、loadColumns・loadTasks がそれぞれ画面に出す
+        await Promise.all([loadColumns(), loadTasks(filters)])
       })
       .catch((error) => {
         setError(errorMessage(error, 'ファイルを読み込み'))

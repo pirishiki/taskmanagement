@@ -7,6 +7,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -81,7 +82,11 @@ public class TaskService {
 
     // 書き出し用：全部の列と、その中のタスク（絞り込みには関係なく）を、ファイルの形（TaskFile、今の版）にして返す
     // 列は左から、タスクは上から、画面と同じ順に並べる
-    @Transactional(readOnly = true)
+    // REPEATABLE_READ：最初に DB に聞いたときの状態を、このメソッドの最後まで見続ける（docs/二重送信の設計書.md の 1 節 #7）
+    // 書き出しは「列の一覧 → 列ごとのタスク」と何回も DB に聞く。ふつう（READ_COMMITTED）は 1 回聞くごとに最新の状態を見るので、
+    // 途中で import が終わると「前の列 ＋ 消えたあとのタスク（空）」のような、どの時点にもなかったファイルになってしまう
+    // 読み取りだけ（readOnly）なので、書き込みの鍵はとらない（import を待たせず、import にも待たされない）
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public TaskFile exportTasks() {
         List<TaskFileColumn> columns = columnRepository.findAllByOrderBySortOrderAsc().stream()
                 .map(column -> new TaskFileColumn(

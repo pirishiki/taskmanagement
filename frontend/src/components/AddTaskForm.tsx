@@ -22,7 +22,7 @@ function AddTaskForm({ onAdd }: Props) {
   const [priority, setPriority] = useState<Task['priority']>('medium')
   const [dueDate, setDueDate] = useState('')
   // 番号札と送信中の管理（送信中は 2 回目の送信を無視する）
-  const { sending, submit } = useIdempotentSubmit(onAdd)
+  const { sending, submit, submitError } =useIdempotentSubmit(onAdd)
 
   // 欄を最初の状態に戻す
   function resetFields() {
@@ -121,6 +121,8 @@ function AddTaskForm({ onAdd }: Props) {
           className="min-w-0 flex-1 rounded border border-gray-300 bg-white px-2 py-1 text-sm"
         />
       </div>
+      {/* 番号札が作れなかったときなど、フォームの中で出す赤いメッセージ */}
+      {submitError && <p className="text-sm text-red-600">{submitError}</p>}
       <div className="flex items-center gap-2">
         <button
           type="submit"

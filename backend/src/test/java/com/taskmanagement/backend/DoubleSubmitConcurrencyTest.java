@@ -23,7 +23,9 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Queue;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -31,6 +33,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -49,6 +52,11 @@ class DoubleSubmitConcurrencyTest {
     // 同時に送る本数と、繰り返すラウンド数
     private static final int THREADS = 8;
     private static final int ROUNDS = 5;
+
+    // DS-35 の import ファイルに足す列の数
+    // 書き出しは「列の一覧を読む → 列ごとにタスクを読む」と何回も DB に聞くので、列が多いほど、途中で import が終わる
+    // すき間が広くなる（1 つの状態を最後まで読む作りでないと、混ざったファイルが出やすくなる）
+    private static final int EXTRA_COLUMNS = 20;
 
     @Autowired
     private MockMvcTester mvc;
@@ -319,7 +327,8 @@ class DoubleSubmitConcurrencyTest {
             List<MvcTestResult> results = runConcurrently(calls);
 
             assertThat(results).extracting(DoubleSubmitConcurrencyTest::statusOf).containsOnly(204);
-            // 「あとから終わったほうの内容だけ」が残る。A か B のどちらか一方と、完全に一致する（列もタスクも混ざらない）
+            // どちらか一方のファイルの内容だけが残る。A か B のどちらかと、完全に一致する（列もタスクも混ざらない）
+            // どちらが残るかは、鍵を取れた順で決まる（あとから鍵を取ったほうが残る）。順番は外から分からないので、どちらでもよい
             assertThat(boardIsExactly("A") || boardIsExactly("B"))
                     .as("列とタスクが、A か B のどちらかのファイルの内容そのものになっている: %s", columnNames())
                     .isTrue();
@@ -341,6 +350,7 @@ class DoubleSubmitConcurrencyTest {
         List<MvcTestResult> results = runConcurrently(calls);
 
         assertThat(results).extracting(DoubleSubmitConcurrencyTest::statusOf).containsOnly(204);
+        // 最後に鍵を取った 1 本のファイルの内容だけが残る（A か B のどちらかと完全に一致し、混ざらない）
         assertThat(boardIsExactly("A") || boardIsExactly("B")).isTrue();
         assertBoardIsConsistent();
     }
@@ -393,37 +403,50 @@ class DoubleSubmitConcurrencyTest {
     }
 
     @Test
-    @DisplayName("DS-33 import が途中で失敗（中身がおかしい）して 400 になっても、鍵が残らず、すぐ次の追加が成功する")
-    void ds33FailedImportDoesNotBlockNextWrite() {
-        taskRepository.save(new Task("今あるタスク", todo, TaskPriority.MEDIUM, null, 0.0));
-        List<String> brokenFiles = List.of(
-                // タスク名が空（取り込みの途中で失敗する）
+    @DisplayName("DS-33 ① 鍵をとる前の 400（タスク名が空・JSON が壊れている）のあと、今の列・タスクはそのままで、次の追加が成功する")
+    void ds33RejectedBeforeLockDoesNotBlockNextWrite() {
+        assertFailedImportLeavesBoardAndNextWriteSucceeds(List.of(
+                // タスク名が空：Controller の入力チェック（@Valid）で断られる。トランザクションを始める前なので、鍵はとらない
                 """
                 {"version": 2, "columns": [
                   {"name": "X", "fixed": true, "done": true, "tasks": [{"text": "", "priority": "high"}]}
                 ]}
                 """,
-                // 基本の列が 3 つでない
+                // JSON として読めない：JSON を読む時点で断られる。これも鍵をとる前
+                "{\"version\": 2, \"columns\": ["));
+    }
+
+    @Test
+    @DisplayName("DS-33 ② 鍵をとったあとの 400（基本の列が 3 つでない）のあと、今の列・タスクはそのままで、次の追加が成功する")
+    void ds33RejectedAfterLockDoesNotBlockNextWrite() {
+        assertFailedImportLeavesBoardAndNextWriteSucceeds(List.of(
+                // 基本の列が 2 つ：入力チェックは通り、TaskService.importTasks の中（鍵をとったあと、消す前）で断られる
+                // トランザクションが取り消されると、鍵も DB が自動で外す。外れなければ、次の追加が待たされて止まる
                 """
-                {"version": 2, "columns": [{"name": "X", "fixed": true, "done": true, "tasks": []}]}
-                """,
-                // JSON として読めない
-                "{\"version\": 2, \"columns\": [");
+                {"version": 2, "columns": [
+                  {"name": "X", "fixed": true, "tasks": [{"text": "x", "priority": "high"}]},
+                  {"name": "Y", "fixed": true, "done": true, "tasks": []}
+                ]}
+                """));
+    }
+
+    // 準備：今のタスクを 1 件入れる。実行：おかしなファイルを 1 つずつ読み込ませ、そのたびに 400 を確かめる
+    // 確かめる：①今の列・タスクがそのまま残る、②鍵が残っていない（次の追加が、待たされずに 201 で返る）
+    private void assertFailedImportLeavesBoardAndNextWriteSucceeds(List<String> brokenFiles) {
+        taskRepository.save(new Task("今あるタスク", todo, TaskPriority.MEDIUM, null, 0.0));
 
         for (String broken : brokenFiles) {
             assertThat(importFile(broken)).hasStatus(HttpStatus.BAD_REQUEST);
+            assertThat(taskRepository.findAll()).extracting(Task::getText).containsExactly("今あるタスク");
+            assertThat(columnNames()).containsExactly("やるべきこと", "進行中", "終わったこと");
 
-            // 鍵が残っていれば、次の書き込みは待たされ続ける。別スレッドで呼んで、一定時間内に 201 が返ることを確かめる
+            // 鍵が残っていれば、次の書き込みは待たされる。別スレッドで呼んで、一定時間内に 201 が返ることを確かめる
             List<Supplier<MvcTestResult>> calls = new ArrayList<>();
             calls.add(() -> postTask(null, "{\"text\": \"次の追加\"}"));
             MvcTestResult next = runConcurrently(calls).get(0);
             assertThat(statusOf(next)).isEqualTo(201);
             assertThat(mvc.delete().uri("/api/tasks/{id}", idOf(next))).hasStatus(HttpStatus.NO_CONTENT);
         }
-
-        // 失敗した import は何も変えていない
-        assertThat(taskRepository.findAll()).extracting(Task::getText).containsExactly("今あるタスク");
-        assertThat(columnNames()).containsExactly("やるべきこと", "進行中", "終わったこと");
     }
 
     @Test
@@ -444,5 +467,94 @@ class DoubleSubmitConcurrencyTest {
             assertThat(statusOf(results.get(i))).isEqualTo(i % 2 == 0 ? 400 : 201);
         }
         assertThat(taskRepository.count()).isEqualTo(THREADS / 2);
+    }
+
+    // ---- DS-35 ----
+
+    // 基本の列 3 つに、足した列を EXTRA_COLUMNS 個はさんだ import ファイル。どの列にもタスクが 1 件ずつ入る
+    private static String wideImportJson(String prefix) {
+        StringBuilder columns = new StringBuilder();
+        columns.append(column(prefix + "-todo", true, false, prefix + "-t"));
+        for (int i = 0; i < EXTRA_COLUMNS; i++) {
+            columns.append(',').append(column(prefix + "-c" + i, false, false, prefix + "-x" + i));
+        }
+        columns.append(',').append(column(prefix + "-doing", true, false, prefix + "-d"));
+        columns.append(',').append(column(prefix + "-done", true, true, prefix + "-z"));
+        return "{\"version\": 2, \"columns\": [" + columns + "]}";
+    }
+
+    private static String column(String name, boolean fixed, boolean done, String taskText) {
+        return "{\"name\": \"" + name + "\", \"fixed\": " + fixed + ", \"done\": " + done
+                + ", \"tasks\": [{\"text\": \"" + taskText + "\", \"priority\": \"high\"}]}";
+    }
+
+    // 書き出したファイルを「列の名前=その列のタスクの文章」の並びにする（ファイル同士を、中身だけで比べるため）
+    // タスクの文章は、列ごとに「,」でつなぐ（タスクが空の列は「名前=」になる）
+    private static List<String> exportedBoard(MvcTestResult result) {
+        String body = bodyOf(result);
+        List<String> names = JsonPath.read(body, "$.columns[*].name");
+        List<String> board = new ArrayList<>();
+        for (int i = 0; i < names.size(); i++) {
+            List<String> texts = JsonPath.read(body, "$.columns[" + i + "].tasks[*].text");
+            board.add(names.get(i) + "=" + String.join(",", texts));
+        }
+        return board;
+    }
+
+    // import ファイル（wideImportJson）を読み込んだあとの、書き出しの形
+    private static List<String> expectedBoard(String prefix) {
+        List<String> board = new ArrayList<>();
+        board.add(prefix + "-todo=" + prefix + "-t");
+        for (int i = 0; i < EXTRA_COLUMNS; i++) {
+            board.add(prefix + "-c" + i + "=" + prefix + "-x" + i);
+        }
+        board.add(prefix + "-doing=" + prefix + "-d");
+        board.add(prefix + "-done=" + prefix + "-z");
+        return board;
+    }
+
+    @Test
+    @DisplayName("DS-35 書き出しと import を同時に送ると、書き出したファイルは import の前か後の、どちらかの状態と完全に一致する")
+    void ds35ExportDuringImportIsOneConsistentState() {
+        for (int round = 0; round < ROUNDS * 4; round++) {
+            // 準備：前の状態（P か Q）を読み込んでおく。毎ラウンド、入れ替える（前と後が必ずちがう中身になる）
+            String before = round % 2 == 0 ? "P" : "Q";
+            String after = round % 2 == 0 ? "Q" : "P";
+            assertThat(importFile(wideImportJson(before))).hasStatus(HttpStatus.NO_CONTENT);
+
+            // 実行：import 1 本と、書き出しのスレッド（THREADS - 1）本を、一斉に始める
+            // 書き出しのスレッドは、import が終わるまで書き出しを繰り返す（1 回の書き出しは import より速いので、
+            // 1 回だけだと import のコミットの前に終わってしまい、コミットの瞬間をまたぐ書き出しが出ないため）
+            AtomicBoolean importDone = new AtomicBoolean(false);
+            Queue<MvcTestResult> exports = new ConcurrentLinkedQueue<>();
+            List<Supplier<MvcTestResult>> calls = new ArrayList<>();
+            calls.add(() -> {
+                MvcTestResult imported = importFile(wideImportJson(after));
+                importDone.set(true);
+                return imported;
+            });
+            for (int i = 1; i < THREADS; i++) {
+                calls.add(() -> {
+                    MvcTestResult export;
+                    // import が終わったのを見たあとも 1 回は書き出す（後の状態の書き出しも、必ず確かめるため）
+                    boolean last;
+                    do {
+                        last = importDone.get();
+                        export = mvc.get().uri("/api/tasks/export").exchange();
+                        exports.add(export);
+                    } while (!last);
+                    return export;
+                });
+            }
+            List<MvcTestResult> results = runConcurrently(calls);
+
+            // 確かめる：import は 204。書き出しは全部 200 で、前（before）か後（after）の状態と、列もタスクも完全に一致する
+            // （列はあるのにタスクが空、前の列と後のタスクが混ざる、などがない）
+            assertThat(statusOf(results.get(0))).isEqualTo(204);
+            for (MvcTestResult export : exports) {
+                assertThat(statusOf(export)).isEqualTo(200);
+                assertThat(exportedBoard(export)).isIn(expectedBoard(before), expectedBoard(after));
+            }
+        }
     }
 }

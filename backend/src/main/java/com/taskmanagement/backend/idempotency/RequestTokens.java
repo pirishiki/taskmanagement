@@ -117,10 +117,11 @@ public class RequestTokens {
                         row.getObject("resource_id", Long.class)),
                 token);
         // 行がない・作ったものの番号がない：先のほうが取り消された直後などで、記録が途中のまま見えた
-        // 書き込みの鍵があるので、ふだんは起きない。起きても 500 にせず、送り直してもらう
+        // 書き込みの鍵があるので、ふだんは起きない。起きても 500 にせず、503（少し待ってから送り直す）にする（設計書 2 節）
+        // 409 にしないのは、画面が 409 を「ちがう中身」と受け取って札を取り替え、送り直しで 2 件できてしまうため
         if (stored.isEmpty() || stored.get(0).resourceId() == null) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "同じ番号札の追加が、まだ終わっていません。少し待ってから、もう一度送ってください");
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
+                    "同じ番号札の追加が、まだ終わっていません。少し待ってから、もう一度お試しください");
         }
         StoredToken found = stored.get(0);
         if (!found.kind().equals(kind.value) || !found.fingerprint().equals(fingerprint)) {

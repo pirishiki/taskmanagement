@@ -271,6 +271,26 @@ class DoubleSubmitTaskApiTest {
     }
 
     @Test
+    @DisplayName("札の行はあるのに、作ったものの番号がまだ入っていないと 503 になり、タスクは作られない（設計書 2 節）")
+    void tokenWithoutResourceIdIsServiceUnavailable() {
+        // 準備：作り終わる途中の札の行（resource_id が NULL）を、表に直接入れる
+        // （アプリでは、札の記録と追加は同じトランザクションで、鍵で 1 つずつ動くので、ほかからこの状態は見えない）
+        UUID token = UUID.randomUUID();
+        jdbc.update("INSERT INTO request_tokens (token, kind, resource_id, fingerprint) VALUES (?, 'task', NULL, ?)",
+                token, DUMMY_FINGERPRINT);
+
+        // 実行と確かめる：409 にすると、画面が札を取り替えて 2 件できてしまうので、「少し待って同じ札で送り直す」の 503
+        MvcTestResult result = postTask(token.toString(), """
+                {"text": "牛乳を買う"}
+                """);
+
+        assertThat(result).hasStatus(HttpStatus.SERVICE_UNAVAILABLE);
+        assertThat(result).bodyJson().extractingPath("$.detail").asString().contains("少し待ってから");
+        assertThat(taskRepository.count()).isZero();
+        assertThat(tokenRows(token.toString())).isEqualTo(1);
+    }
+
+    @Test
     @DisplayName("DS-14 札なしで追加を 2 回送ると、2 回とも 201 で 2 件できる（今までどおり）")
     void ds14WithoutKeyCreatesTwice() {
         String body = """
