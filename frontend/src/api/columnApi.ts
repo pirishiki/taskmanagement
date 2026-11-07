@@ -10,10 +10,11 @@ export async function fetchColumns(): Promise<BoardColumn[]> {
 }
 
 // 列を右端に足す。作った列（id 付き）が返る
-export async function createColumn(name: string): Promise<BoardColumn> {
+// idempotencyKey は番号札（UUID）。タスクの追加 createTask と同じ決まり
+export async function createColumn(name: string, idempotencyKey: string): Promise<BoardColumn> {
   const response = await request('/api/columns', {
     method: 'POST',
-    headers: jsonHeaders,
+    headers: { ...jsonHeaders, 'Idempotency-Key': idempotencyKey },
     body: JSON.stringify({ name }),
   })
   return response.json()

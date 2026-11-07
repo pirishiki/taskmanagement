@@ -1,23 +1,31 @@
 import { useState, type FormEvent, type KeyboardEvent } from 'react'
+import { useIdempotentSubmit } from '../hooks/useIdempotentSubmit'
+import type { AddResult } from '../types/task'
 
 type Props = {
-  // 入力された列の名前（前後の空白は取ってある）を上に伝える
-  onAdd: (name: string) => void
+  // 入力された列の名前（前後の空白は取ってある）と番号札を上に伝える。結果で、欄を空にするかが決まる
+  onAdd: (name: string, idempotencyKey: string) => Promise<AddResult>
 }
 
 // ボードの右端に出す「＋ 列を追加」。カードの追加（AddTaskForm）と同じく、ふだんはボタンだけを出す
 function AddColumnForm({ onAdd }: Props) {
   const [open, setOpen] = useState(false)
   const [name, setName] = useState('')
+  // 番号札と送信中の管理（送信中は 2 回目の送信を無視する）
+  const { sending, submit } = useIdempotentSubmit(onAdd)
 
   // ✕ ボタン、または Esc キーでフォームを閉じる（入力途中の内容は捨てる）
+  // 送信中は閉じない（閉じたあとに失敗すると、捨てたはずの入力が戻ってしまうため）
   function close() {
+    if (sending) {
+      return
+    }
     setName('')
     setOpen(false)
   }
 
   // 追加ボタンを押したとき、または名前の欄で Enter キーを押したときに呼ばれる
-  function handleSubmit(event: FormEvent) {
+  async function handleSubmit(event: FormEvent) {
     event.preventDefault() // ページの再読み込みを止める
 
     const trimmed = name.trim()
@@ -25,10 +33,14 @@ function AddColumnForm({ onAdd }: Props) {
       return // 空欄や空白だけのときは何もしない（カードの追加と同じ）
     }
 
-    onAdd(trimmed)
+    // 名前が同じなら同じ番号札で送り直し、ちがえば新しい番号札になる
+    const result = await submit(trimmed, trimmed)
 
+    // 欄を空にするのは、追加が成功したあとだけ。失敗したときは名前をそのまま残す（送り直せるように）
     // 続けて列を足せるように、フォームは開いたまま欄だけを空にする
-    setName('')
+    if (result === 'ok') {
+      setName('')
+    }
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLInputElement>) {
@@ -57,18 +69,25 @@ function AddColumnForm({ onAdd }: Props) {
         onChange={(event) => setName(event.target.value)}
         onKeyDown={handleKeyDown}
         autoFocus
+        // 送信中は書き換えられない（disabled にすると入力欄からフォーカスが外れるので readOnly）
+        readOnly={sending}
         // バックエンドと同じく 255 文字まで（DB の列が 255 文字までのため）
         maxLength={255}
         placeholder="列の名前を入力…"
         className="rounded bg-white px-3 py-2 text-sm shadow-sm outline-none"
       />
       <div className="flex items-center gap-2">
-        <button type="submit" className="rounded bg-[#0079bf] px-3 py-1.5 text-sm text-white hover:bg-[#026aa7]">
-          列を追加
+        <button
+          type="submit"
+          disabled={sending}
+          className="rounded bg-[#0079bf] px-3 py-1.5 text-sm text-white hover:bg-[#026aa7] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-[#0079bf]"
+        >
+          {sending ? '追加中…' : '列を追加'}
         </button>
         <button
           type="button"
           onClick={close}
+          disabled={sending}
           aria-label="閉じる"
           className="rounded px-2 py-1 text-lg leading-none text-gray-500 hover:bg-gray-300/60 hover:text-gray-800"
         >

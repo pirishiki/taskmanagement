@@ -16,7 +16,7 @@ import Board from './components/Board'
 import DataButtons from './components/DataButtons'
 import SearchBar from './components/SearchBar'
 import type { BoardColumn } from './types/column'
-import { noFilters, type NewTask, type SortCriterion, type Task, type TaskContent, type TaskFilters, type TaskPatch } from './types/task'
+import { noFilters, type AddResult, type NewTask, type SortCriterion, type Task, type TaskContent, type TaskFilters, type TaskPatch } from './types/task'
 
 // 優先度順に並べるときの順位（数字が小さいほど上に来る）
 const priorityRank: Record<Task['priority'], number> = {
@@ -40,6 +40,10 @@ function errorMessage(error: unknown, action: string): string {
   if (error.status === 404) {
     return `${action}できませんでした。見つかりません（ほかの画面で削除された可能性があります）。`
   }
+  if (error.status === 503) {
+    // 別の書き込みが続いていて待ちきれなかった。何も書き込んでいないので、そのまま送り直してよい。理由は detail に入っている
+    return `${action}できませんでした（${error.problem?.detail ?? 'いま別の書き込みが続いています'}）。`
+  }
   if (error.status === 409) {
     // 今の状態ではできない（例：タスクが入っている列を消そうとした）。理由は detail に入っている
     return `${action}できませんでした（${error.problem?.detail}）。`
@@ -55,6 +59,16 @@ function columnOf(tasks: Task[], columnId: number): Task[] {
 // 「タスクが見つからない」（404）失敗かどうか
 function isNotFound(error: unknown): boolean {
   return error instanceof ApiError && error.status === 404
+}
+
+// 追加が失敗したとき、フォームに伝える結果を決める
+// 404（前に同じ札で作ったものが消されている）・409（同じ札で中身がちがう）は、同じ札で送り直しても必ず同じ失敗になる。
+// そのため番号札を取り替えさせる。それ以外（通信できない・503 など）は、同じ札のまま送り直せる
+function addFailureResult(error: unknown): AddResult {
+  if (error instanceof ApiError && (error.status === 404 || error.status === 409)) {
+    return 'newKey'
+  }
+  return 'failed'
 }
 
 function App() {
@@ -121,25 +135,30 @@ function App() {
   }
 
   // 列のフォームで「追加」が押されたときに呼ばれる
-  function handleAdd(task: NewTask) {
-    createTask(task)
-      .then((created) => {
+  // 結果（AddResult）を返し、フォームが「欄を空にする／番号札を取り替える」を決める
+  function handleAdd(task: NewTask, idempotencyKey: string): Promise<AddResult> {
+    return createTask(task, idempotencyKey)
+      .then((created): AddResult => {
         // 今のタスク一覧の最後に、登録されたタスクを足す
         setTasks((prev) => [...prev, created])
         setError(null)
+        return 'ok'
       })
-      .catch((error) => {
+      .catch((error): AddResult => {
         setError(errorMessage(error, 'タスクを追加'))
+        return addFailureResult(error)
       })
   }
 
   // カードの編集フォームで「保存」が押されたときに呼ばれる（PUT で丸ごと書き換える）
-  function handleUpdate(id: number, task: TaskContent) {
-    updateTask(id, task)
+  // 成功したら true、失敗したら false を返す（編集フォームが、閉じるか・入力を残すかを決める）
+  function handleUpdate(id: number, task: TaskContent): Promise<boolean> {
+    return updateTask(id, task)
       .then((updated) => {
         // 同じ id のタスクだけを、返ってきたタスクに入れ替える（ほかはそのまま）
         setTasks((prev) => prev.map((t) => (t.id === updated.id ? updated : t)))
         setError(null)
+        return true
       })
       .catch((error) => {
         setError(errorMessage(error, 'タスクを更新'))
@@ -147,6 +166,7 @@ function App() {
         if (isNotFound(error)) {
           setTasks((prev) => prev.filter((t) => t.id !== id))
         }
+        return false
       })
   }
 
@@ -168,7 +188,16 @@ function App() {
   }
 
   // カードの × で削除が確かめられたときに呼ばれる（確認のダイアログはカードの側で出す）
+  // 削除の通信中の番号。同じものを続けて削除しようとしたとき（2 回押し）、2 本目は送らない
+  const deletingTasks = useRef(new Set<number>())
+  const deletingColumns = useRef(new Set<number>())
+
   function handleDelete(id: number) {
+    if (deletingTasks.current.has(id)) {
+      return
+    }
+    deletingTasks.current.add(id)
+    // すでにない番号（404）は api 側で成功として扱われるので、ここには成功と同じ形で届く
     deleteTask(id)
       .then(() => {
         // 削除できたら、同じ id のタスクだけを一覧から外す（ほかはそのまま）
@@ -177,6 +206,9 @@ function App() {
       })
       .catch((error) => {
         setError(errorMessage(error, 'タスクを削除'))
+      })
+      .finally(() => {
+        deletingTasks.current.delete(id)
       })
   }
 
@@ -263,20 +295,26 @@ function App() {
   }
 
   // 「＋ 列を追加」のフォームで「列を追加」が押されたときに呼ばれる。足した列は右端に入る
-  function handleAddColumn(name: string) {
-    createColumn(name)
-      .then((created) => {
+  function handleAddColumn(name: string, idempotencyKey: string): Promise<AddResult> {
+    return createColumn(name, idempotencyKey)
+      .then((created): AddResult => {
         setColumns((prev) => [...prev, created])
         setError(null)
+        return 'ok'
       })
-      .catch((error) => {
+      .catch((error): AddResult => {
         setError(errorMessage(error, '列を追加'))
+        return addFailureResult(error)
       })
   }
 
   // 列の × で削除が確かめられたときに呼ばれる（確認のダイアログは列の側で出す）
   // タスクが入っている列なら、サーバーが断る（409）。そのときは理由を画面に出し、列はそのまま残す
   function handleDeleteColumn(id: number) {
+    if (deletingColumns.current.has(id)) {
+      return // 同じ列の削除が通信中（2 回押し）。2 本目は送らない
+    }
+    deletingColumns.current.add(id)
     deleteColumn(id)
       .then(() => {
         setColumns((prev) => prev.filter((column) => column.id !== id))
@@ -285,11 +323,15 @@ function App() {
       .catch((error) => {
         setError(errorMessage(error, '列を削除'))
       })
+      .finally(() => {
+        deletingColumns.current.delete(id)
+      })
   }
 
   // 「⬇ 書き出す」が押されたときに呼ばれる。全部のタスクを JSON のファイルとして保存させる
-  function handleExport() {
-    exportTasks()
+  // 終わる（成功・失敗とも）と解決する Promise を返す。ボタンの「送信中」の表示に使う
+  function handleExport(): Promise<void> {
+    return exportTasks()
       .then(() => setError(null))
       .catch((error) => {
         setError(errorMessage(error, 'タスクを書き出し'))
@@ -299,8 +341,9 @@ function App() {
   // 「⬆ 読み込む」でファイルが選ばれ、確認で OK が押されたときに呼ばれる
   // 今の列とタスクを全部、ファイルの列とタスクに置き換える。成功したら、列と、今の条件でのタスクを取り直す
   // 失敗したときは、サーバーが何も変えていないので、画面もそのままでよい
-  function handleImport(file: File) {
-    importTasks(file)
+  // 終わる（成功・失敗とも）と解決する Promise を返す。ボタンの「送信中」の表示に使う
+  function handleImport(file: File): Promise<void> {
+    return importTasks(file)
       .then(() => {
         setError(null)
         loadColumns()

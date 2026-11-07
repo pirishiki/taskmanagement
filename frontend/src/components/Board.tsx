@@ -14,7 +14,7 @@ import {
 import { sortableKeyboardCoordinates } from '@dnd-kit/sortable'
 import { useState } from 'react'
 import type { BoardColumn } from '../types/column'
-import type { NewTask, SortCriterion, Task, TaskContent, TaskPatch } from '../types/task'
+import type { AddResult, NewTask, SortCriterion, Task, TaskContent, TaskPatch } from '../types/task'
 import AddColumnForm from './AddColumnForm'
 import Column, { droppableIdPrefix } from './Column'
 import { TaskCardOverlay } from './TaskCard'
@@ -23,13 +23,13 @@ type Props = {
   // 並べる列（左から順）。App がバックエンドから取ってきたもの
   columns: BoardColumn[]
   tasks: Task[]
-  onAdd: (task: NewTask) => void
-  onUpdate: (id: number, task: TaskContent) => void
+  onAdd: (task: NewTask, idempotencyKey: string) => Promise<AddResult>
+  onUpdate: (id: number, task: TaskContent) => Promise<boolean>
   onPatch: (id: number, patch: TaskPatch) => void
   onDelete: (id: number) => void
   onMove: (taskId: number, toColumnId: number, toIndex: number) => void
   onSort: (columnId: number, criterion: SortCriterion) => void
-  onAddColumn: (name: string) => void
+  onAddColumn: (name: string, idempotencyKey: string) => Promise<AddResult>
   onDeleteColumn: (columnId: number) => void
 }
 
