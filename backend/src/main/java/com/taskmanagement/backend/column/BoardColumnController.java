@@ -1,5 +1,6 @@
 package com.taskmanagement.backend.column;
 
+import com.taskmanagement.backend.idempotency.RequestTokens;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -9,6 +10,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -36,9 +38,13 @@ public class BoardColumnController {
     }
 
     // 例：POST /api/columns  { "name": "確認待ち" } → 右端に列を足して、201 で返す
+    // ヘッダー Idempotency-Key（番号札、UUID）は省略できる。付けると、同じ札で送り直しても列は 1 つだけ（2 回目は同じ列を返す）
+    // 札が UUID の形でなければ 400（RequestTokens.parseKey）
     @PostMapping
-    public ResponseEntity<BoardColumnResponse> createColumn(@Valid @RequestBody BoardColumnRequest request) {
-        BoardColumn created = columnService.createColumn(request.name());
+    public ResponseEntity<BoardColumnResponse> createColumn(
+            @RequestHeader(name = RequestTokens.HEADER, required = false) String idempotencyKey,
+            @Valid @RequestBody BoardColumnRequest request) {
+        BoardColumn created = columnService.createColumn(request.name(), RequestTokens.parseKey(idempotencyKey));
         return ResponseEntity.status(HttpStatus.CREATED).body(BoardColumnResponse.from(created));
     }
 
@@ -57,7 +63,7 @@ public class BoardColumnController {
         return BoardColumnResponse.from(columnService.renameColumn(id, request.name()));
     }
 
-    // 例：DELETE /api/columns/4 → 列4を消す。成功したら 204（中身なし）
+    // 例：DELETE /api/columns/4 → 列4を消す。成功したら 204（中身なし）。もうない列でも 204（2 回目の削除も成功）
     // 基本の列（やるべきこと・進行中・終わったこと）・中にタスクがいる列は消せない（409）
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteColumn(@PathVariable Long id) {

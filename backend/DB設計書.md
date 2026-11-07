@@ -4,11 +4,20 @@
 
 ## ER図
 
-列（`board_columns`）とタスク（`tasks`）の2つのテーブルでできている。1つの列に、0件以上のタスクが入る。
+列（`board_columns`）とタスク（`tasks`）と、番号札（`request_tokens`）の3つのテーブルでできている。1つの列に、0件以上のタスクが入る。
+
+`request_tokens` は、追加のときの番号札（`Idempotency-Key`）の記録。`resource_id` に作ったタスク・列の番号を書くが、外部キーにはしていない（作ったものがあとで消されても札は残し、同じ札が来たら404と答えるため）。そのため、ER図では線でつないでいない。
 
 ```mermaid
 erDiagram
     board_columns ||--o{ tasks : "列に入っている"
+    request_tokens {
+        UUID token PK "番号札"
+        VARCHAR kind "task か column"
+        BIGINT resource_id "作ったタスク・列の番号（NULL可）"
+        CHAR fingerprint "中身の指紋（SHA-256）"
+        TIMESTAMPTZ created_at "記録した日時"
+    }
     board_columns {
         BIGINT id PK "自動採番"
         VARCHAR name "列の名前"
@@ -61,6 +70,22 @@ erDiagram
 ※ priority は、Java の中では enum（[TaskPriority.java](src/main/java/com/taskmanagement/backend/task/TaskPriority.java)）で持ち、DB には小文字の文字（`high` など）で保存する。変換は [TaskPriorityConverter.java](src/main/java/com/taskmanagement/backend/task/TaskPriorityConverter.java) が受け持つ（JPA 標準の `@Enumerated(EnumType.STRING)` は大文字の `HIGH` で保存するため使っていない）。
 ※ V3 より前は、列を `status`（todo・doing・done の文字）で持っていた。V3 で `column_id` に置き換え、`status` は消した。
 
+### request_tokens テーブル
+
+タスク・列の追加のときの番号札（リクエストヘッダー `Idempotency-Key`）1つを1行で表すテーブル（イシュー #69。決まりは [二重送信の設計書](../docs/二重送信の設計書.md) の2節）。テーブルを作る SQL は [V5__create_request_tokens.sql](src/main/resources/db/migration/V5__create_request_tokens.sql)。エンティティはなく、[RequestTokens.java](src/main/java/com/taskmanagement/backend/idempotency/RequestTokens.java) が SQL（JdbcTemplate）で読み書きする（`INSERT … ON CONFLICT DO NOTHING` を使うため）。
+
+| カラム名 | 型 | NULL許可 | キー・制約 | 説明 |
+|---|---|---|---|---|
+| token | UUID | 不可 | PK（主キー） | 番号札。画面が追加のたびに作って送る。同じ札が2回来たら、主キーが重なることで気づける |
+| kind | VARCHAR(16) | 不可 | NOT NULL、CHECK（`'task'` か `'column'`） | 何を追加した札か。ちがう種類の追加に同じ札が来たら、ちがう中身として409 |
+| resource_id | BIGINT | 可 | - | 作ったタスク・列の番号。札を入れてから作り終わるまでの途中だけ NULL（同じトランザクションの中なので、ほかからは見えない）。外部キーにはしない（作ったものが消されても札は残すため） |
+| fingerprint | CHAR(64) | 不可 | NOT NULL | 中身の指紋（SHA-256 を16進にした64文字）。送られたとおりの要求から作る。タスクは「前後の空白を除いた文章・優先度（省略は medium）・期限・列の番号（省略は省略のまま。一番左の列は並べ替えで変わるので入れない）」、列は「前後の空白を除いた名前」 |
+| created_at | TIMESTAMPTZ | 不可 | NOT NULL、既定値 now() | 札を記録した日時。24時間をこえた札は、追加のたびに消す（専用の定期処理はない） |
+
+- 札は、追加と同じトランザクションで記録する。追加が失敗すれば札も一緒に取り消されるので、同じ札で送り直せる
+- 同じ札が来たとき：指紋が同じなら、新しく作らず1回目に作ったものを返す（201）。指紋がちがえば409。1回目に作ったものが消されていれば404（作り直さない）。札の行はあるのに `resource_id` がまだ NULL なら503（少し待って同じ札で送り直してもらう。書き込みの鍵があるので、ふだんは起きない）
+- 書き込みは、トランザクションの始めにとる鍵（`pg_advisory_xact_lock`。アプリ全体で1つ）で1つずつ順番に動く（[WriteLockTransactionManager.java](src/main/java/com/taskmanagement/backend/write/WriteLockTransactionManager.java)）。鍵を待つのは上限（`app.write-lock.timeout`、ふだんは5秒）までで、こえたら503。テーブルではないので、ER図・テーブル定義には出てこない
+
 ### インデックス
 
 | インデックス名 | 対象 | 目的 |
@@ -68,6 +93,7 @@ erDiagram
 | （主キーインデックス） | 各テーブルの id | 主キーとして自動作成。1件を id で高速に取得する |
 | idx_tasks_column_id_sort_order | tasks の column_id, sort_order（複合） | ①列ごとのタスクの取得と②列の中の表示順での並び替えを、1つのインデックスで速くする（V3 で、`idx_tasks_status_sort_order` から作り直した） |
 | uq_board_columns_one_done | board_columns の is_done（`WHERE is_done` の部分インデックス、UNIQUE） | 完了の印（is_done = TRUE）が2つの列に付かないようにする。TRUE の行だけを見て、同じ値が2つあれば止める |
+| idx_request_tokens_created_at | request_tokens の created_at | 24時間をこえた札を消すとき（追加のたび）に、表全体を読まずに古い行を見つける（V5） |
 
 ### アプリ側バリデーション（DBの制約とは別レイヤー）
 
@@ -100,7 +126,7 @@ text や必須のチェック（`@NotBlank`・`@Size`・`@NotNull` など）は�
 補足:
 - `id` は `GenerationType.IDENTITY` で、行を追加するたびにデータベース側が自動で採番する
 - `sort_order` はアプリ側（[TaskService.java](src/main/java/com/taskmanagement/backend/task/TaskService.java)）が自動計算して設定するため、API利用者が指定する項目ではない。新しいタスクや、PUT・PATCH で別の列に移ったタスクは「その列の最大値＋1」（列の一番下）になる。ドラッグ（move）で動かしたタスクは「上のタスクと、DB で本当にそのすぐ下のタスクの真ん中」になり、ほかのタスクの値は変えない（真ん中の値が作れないほど近いときだけ、その列を 0, 1, 2… と振り直す）
-- `idx_tasks_column_id_sort_order` は [TaskRepository.java](src/main/java/com/taskmanagement/backend/task/TaskRepository.java) の `findTopByColumnIdOrderBySortOrderDesc`（列の一番下の1件）や、一覧の取得（`findTasks`。column_id→sort_order の順）の検索・ソートを速くするために付けた
+- `idx_tasks_column_id_sort_order` は [TaskRepository.java](src/main/java/com/taskmanagement/backend/task/TaskRepository.java) の `findTopByColumnIdOrderBySortOrderDescIdDesc`（列の一番下の1件）や、一覧の取得（`findTasks`。column_id→sort_order→id の順）の検索・ソートを速くするために付けた
 
 ## テーブルの変更の記録（Flyway）
 
@@ -112,13 +138,14 @@ text や必須のチェック（`@NotBlank`・`@Size`・`@NotNull` など）は�
 | `V2__sort_order_to_double.sql` | `sort_order` を INTEGER から DOUBLE PRECISION（小数）に変える。今の整数の値はそのまま小数になる。検索・絞り込み中の並び替えで、2件の間に入れられるようにするため（イシュー #35） |
 | `V3__create_board_columns.sql` | 列を自由に追加・削除できるようにする（イシュー #38）。board_columns テーブルを作って今までの3列を入れ、tasks の `status` を `column_id`（外部キー）に置き換える。今あるタスクは、status から対応する列の番号を書き写すので、消えない。インデックスも `idx_tasks_column_id_sort_order` に作り直す |
 | `V4__add_fixed_to_board_columns.sql` | board_columns に「基本の列」の印 `is_fixed` を足し、やるべきこと・進行中・終わったことに付ける。基本の3列を消せないようにするため（イシュー #38。要件定義書 No.13 は「基本の3列『以外の』列を自由に作れる」こと） |
+| `V5__create_request_tokens.sql` | 番号札（`Idempotency-Key`）を記録する request_tokens テーブルと、インデックス `idx_request_tokens_created_at` を作る。タスク・列の追加で、返事が届かずに押し直しても2件にしないため（イシュー #69） |
 
 - Hibernate はテーブルを作ったり直したりしない（`spring.jpa.hibernate.ddl-auto=validate`）。起動時にエンティティとテーブルが合っているかを確かめ、合わなければ起動を止める
 - Flyway を入れる前から使っていたデータ入りの DB は、`spring.flyway.baseline-on-migrate=true` により「V1 まで済み」（`BASELINE`）と記録され、V1 は流れない（データはそのまま）。空の DB（テスト・新しい環境）では V1 から流れる
 
 ### テーブルを変えるときの手順
 
-1. 新しい番号の SQL ファイルを足す（例：`V5__add_memo_column.sql` に `ALTER TABLE tasks ADD COLUMN memo VARCHAR(255);`）
+1. 新しい番号の SQL ファイルを足す（例：`V6__add_memo_column.sql` に `ALTER TABLE tasks ADD COLUMN memo VARCHAR(255);`）
 2. エンティティ（[Task.java](src/main/java/com/taskmanagement/backend/task/Task.java) など）を、変えたあとのテーブルに合わせる
 3. このファイルの ER 図とテーブル定義を直す
 

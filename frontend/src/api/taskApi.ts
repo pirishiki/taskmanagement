@@ -64,10 +64,12 @@ export async function fetchTasks(filters?: TaskFilters): Promise<Task[]> {
 }
 
 // タスクを登録する。登録が終わると、id と sortOrder の付いたタスクが返る
-export async function createTask(task: NewTask): Promise<Task> {
+// idempotencyKey は番号札（UUID）。ヘッダー Idempotency-Key で送る
+// 同じ札で送り直しても、サーバーは新しく作らず、1 回目と同じ結果を返す
+export async function createTask(task: NewTask, idempotencyKey: string): Promise<Task> {
   const response = await request('/api/tasks', {
     method: 'POST',
-    headers: jsonHeaders,
+    headers: { ...jsonHeaders, 'Idempotency-Key': idempotencyKey },
     body: JSON.stringify(task),
   })
   return response.json()

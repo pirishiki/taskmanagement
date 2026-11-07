@@ -28,7 +28,7 @@ type Props = {
   task: Task
   // 完了の列の番号。○ を押したタスクは、この列へ移る（列の一覧をまだ取れていないときは null）
   doneColumnId: number | null
-  onUpdate: (id: number, task: TaskContent) => void
+  onUpdate: (id: number, task: TaskContent) => Promise<boolean>
   onPatch: (id: number, patch: TaskPatch) => void
   onDelete: (id: number) => void
 }
@@ -65,6 +65,9 @@ function TaskCard({ task, doneColumnId, onUpdate, onPatch, onDelete }: Props) {
   const [priority, setPriority] = useState<Task['priority']>(task.priority)
   const [dueDate, setDueDate] = useState(task.dueDate ?? '')
   const cardRef = useRef<HTMLDivElement>(null)
+  // 保存の送信中。state は表示用、ref は素早い 2 回目を防ぐ用（state は描き直しまで古いため）
+  const [saving, setSaving] = useState(false)
+  const savingRef = useRef(false)
 
   // ドラッグ＆ドロップ：このカードを「つかめる」ようにする。編集中はつかめない（検索・絞り込み中はつかめる）
   // setNodeRef：どの要素がカードかを dnd-kit に教える
@@ -106,7 +109,11 @@ function TaskCard({ task, doneColumnId, onUpdate, onPatch, onDelete }: Props) {
     setEditPosition(cardRef.current?.getBoundingClientRect() ?? null)
   }
 
+  // 保存の送信中は閉じない（閉じたあとに失敗すると、入力が消えたように見えるため）
   function cancelEditing() {
+    if (savingRef.current) {
+      return
+    }
     setEditPosition(null)
   }
 
@@ -119,19 +126,33 @@ function TaskCard({ task, doneColumnId, onUpdate, onPatch, onDelete }: Props) {
   }
 
   // 保存ボタンを押したとき、またはタスク名の欄で Enter キーを押したときに呼ばれる
-  function handleSubmit(event?: FormEvent) {
+  async function handleSubmit(event?: FormEvent) {
     event?.preventDefault() // ページの再読み込みを止める
+    if (savingRef.current) {
+      return // 保存の送信中。2 回目（ボタン・Enter）は送らない
+    }
 
     // タスク名が空欄や空白だけのときは、元のタスク名のままにする（要件定義書の試験14）
     const trimmed = text.trim()
 
     // 列（columnId）は送らない。サーバーは今の列のまま残す（TaskContent の説明を参照）
-    onUpdate(task.id, {
-      text: trimmed === '' ? task.text : trimmed,
-      priority,
-      dueDate: dueDate === '' ? null : dueDate,
-    })
-    setEditPosition(null)
+    savingRef.current = true
+    setSaving(true)
+    let saved = false
+    try {
+      saved = await onUpdate(task.id, {
+        text: trimmed === '' ? task.text : trimmed,
+        priority,
+        dueDate: dueDate === '' ? null : dueDate,
+      })
+    } finally {
+      savingRef.current = false
+      setSaving(false)
+    }
+    // 成功したときだけ編集を閉じる。失敗したときは入力をそのまま残す（直して、もう一度保存できるように）
+    if (saved) {
+      setEditPosition(null)
+    }
   }
 
   // タスク名の欄：Enter で保存、Esc でキャンセル（Shift + Enter は改行）
@@ -219,6 +240,8 @@ function TaskCard({ task, doneColumnId, onUpdate, onPatch, onDelete }: Props) {
                     onChange={(event) => setText(event.target.value)}
                     onKeyDown={handleKeyDown}
                     autoFocus
+                    // 送信中は書き換えられない（disabled にするとフォーカスが外れるので readOnly）
+                    readOnly={saving}
                     // バックエンドと同じく 255 文字まで（DB の列が 255 文字までのため）
                     maxLength={255}
                     rows={3}
@@ -228,9 +251,10 @@ function TaskCard({ task, doneColumnId, onUpdate, onPatch, onDelete }: Props) {
                 </div>
                 <button
                   type="submit"
-                  className="mt-2 rounded bg-[#0079bf] px-4 py-1.5 text-sm text-white hover:bg-[#026aa7]"
+                  disabled={saving}
+                  className="mt-2 rounded bg-[#0079bf] px-4 py-1.5 text-sm text-white hover:bg-[#026aa7] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-[#0079bf]"
                 >
-                  保存
+                  {saving ? '保存中…' : '保存'}
                 </button>
               </form>
 
@@ -244,6 +268,7 @@ function TaskCard({ task, doneColumnId, onUpdate, onPatch, onDelete }: Props) {
                         key={p}
                         type="button"
                         onClick={() => setPriority(p)}
+                        disabled={saving}
                         className={`flex flex-1 items-center justify-center gap-1 rounded px-2 py-1 ${
                           priority === p ? 'bg-white text-gray-800' : 'hover:bg-white/20'
                         }`}
@@ -260,12 +285,14 @@ function TaskCard({ task, doneColumnId, onUpdate, onPatch, onDelete }: Props) {
                     type="date"
                     value={dueDate}
                     onChange={(event) => setDueDate(event.target.value)}
+                    disabled={saving}
                     className="w-full rounded bg-white px-2 py-1 text-gray-800"
                   />
                   {dueDate !== '' && (
                     <button
                       type="button"
                       onClick={() => setDueDate('')}
+                      disabled={saving}
                       className="mt-1 w-full rounded px-2 py-1 text-left hover:bg-white/20"
                     >
                       期限を消す

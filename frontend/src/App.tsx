@@ -16,7 +16,7 @@ import Board from './components/Board'
 import DataButtons from './components/DataButtons'
 import SearchBar from './components/SearchBar'
 import type { BoardColumn } from './types/column'
-import { noFilters, type NewTask, type SortCriterion, type Task, type TaskContent, type TaskFilters, type TaskPatch } from './types/task'
+import { noFilters, type AddResult, type NewTask, type SortCriterion, type Task, type TaskContent, type TaskFilters, type TaskPatch } from './types/task'
 
 // 優先度順に並べるときの順位（数字が小さいほど上に来る）
 const priorityRank: Record<Task['priority'], number> = {
@@ -40,6 +40,10 @@ function errorMessage(error: unknown, action: string): string {
   if (error.status === 404) {
     return `${action}できませんでした。見つかりません（ほかの画面で削除された可能性があります）。`
   }
+  if (error.status === 503) {
+    // 別の書き込みが続いていて待ちきれなかった。何も書き込んでいないので、そのまま送り直してよい。理由は detail に入っている
+    return `${action}できませんでした（${error.problem?.detail ?? 'いま別の書き込みが続いています'}）。`
+  }
   if (error.status === 409) {
     // 今の状態ではできない（例：タスクが入っている列を消そうとした）。理由は detail に入っている
     return `${action}できませんでした（${error.problem?.detail}）。`
@@ -57,6 +61,24 @@ function isNotFound(error: unknown): boolean {
   return error instanceof ApiError && error.status === 404
 }
 
+// 追加の失敗のメッセージ。404 は、前に同じ札で作ったものが消されている（追加の API で 404 になるのはこの場合だけ）
+function addErrorMessage(error: unknown, action: string): string {
+  if (error instanceof ApiError && error.status === 404) {
+    return `${action}できませんでした。前に送ったものは消されています。もう一度押すと、新しく作ります。`
+  }
+  return errorMessage(error, action)
+}
+
+// 追加が失敗したとき、フォームに伝える結果を決める
+// 404（前に同じ札で作ったものが消されている）・409（同じ札で中身がちがう）は、同じ札で送り直しても必ず同じ失敗になる。
+// そのため番号札を取り替えさせる。それ以外（通信できない・503 〔札の行はあるが番号がまだない。待てば直る〕など）は、同じ札のまま送り直せる
+function addFailureResult(error: unknown): AddResult {
+  if (error instanceof ApiError && (error.status === 404 || error.status === 409)) {
+    return 'newKey'
+  }
+  return 'failed'
+}
+
 function App() {
   // 列の一覧（左から順）。ボードに並べる列は、ここに入っているものだけ
   const [columns, setColumns] = useState<BoardColumn[]>([])
@@ -65,6 +87,9 @@ function App() {
   const [error, setError] = useState<string | null>(null)
   // 最後に検索したときの条件（キーワード・優先度・期限）
   const [filters, setFilters] = useState<TaskFilters>(noFilters)
+  // 最新の検索の条件。通信が終わったあとの取り直しは、押した時点の古い条件（クロージャ）ではなく、これを使う
+  // （import や並び替えの通信中に検索されても、検索欄の新しい条件で取り直すため）
+  const filtersRef = useRef<TaskFilters>(noFilters)
   // 条件が1つでも選ばれていれば、一部のタスクだけを表示している（検索・絞り込み中）
   const isFiltering = filters.keyword !== '' || filters.priorities.length > 0 || filters.due !== ''
 
@@ -81,7 +106,7 @@ function App() {
     const requestId = latestRequest.current
     const isLatest = () => requestId === latestRequest.current
 
-    fetchTasks(filters)
+    return fetchTasks(filters)
       .then((result) => {
         if (!isLatest()) {
           return // もっと新しい取得を頼んであるので、この古い結果は捨てる
@@ -104,7 +129,7 @@ function App() {
 
   // 列の一覧を取ってきて、画面のメモ（columns）を書き換える
   const loadColumns = useCallback(() => {
-    fetchColumns()
+    return fetchColumns()
       .then(setColumns)
       .catch((error) => {
         setError(errorMessage(error, '列を取得'))
@@ -117,29 +142,36 @@ function App() {
     setError(null)
     setLoading(true)
     setFilters(nextFilters)
+    filtersRef.current = nextFilters
     loadTasks(nextFilters)
   }
 
   // 列のフォームで「追加」が押されたときに呼ばれる
-  function handleAdd(task: NewTask) {
-    createTask(task)
-      .then((created) => {
+  // 結果（AddResult）を返し、フォームが「欄を空にする／番号札を取り替える」を決める
+  function handleAdd(task: NewTask, idempotencyKey: string): Promise<AddResult> {
+    return createTask(task, idempotencyKey)
+      .then((created): AddResult => {
         // 今のタスク一覧の最後に、登録されたタスクを足す
-        setTasks((prev) => [...prev, created])
+        // 同じ id のタスクがすでに一覧にあれば（返事が届かず取り直したあとの送り直し）、足さずに入れ替える
+        setTasks((prev) => (prev.some((t) => t.id === created.id) ? prev.map((t) => (t.id === created.id ? created : t)) : [...prev, created]))
         setError(null)
+        return 'ok'
       })
-      .catch((error) => {
-        setError(errorMessage(error, 'タスクを追加'))
+      .catch((error): AddResult => {
+        setError(addErrorMessage(error, 'タスクを追加'))
+        return addFailureResult(error)
       })
   }
 
   // カードの編集フォームで「保存」が押されたときに呼ばれる（PUT で丸ごと書き換える）
-  function handleUpdate(id: number, task: TaskContent) {
-    updateTask(id, task)
+  // 成功したら true、失敗したら false を返す（編集フォームが、閉じるか・入力を残すかを決める）
+  function handleUpdate(id: number, task: TaskContent): Promise<boolean> {
+    return updateTask(id, task)
       .then((updated) => {
         // 同じ id のタスクだけを、返ってきたタスクに入れ替える（ほかはそのまま）
         setTasks((prev) => prev.map((t) => (t.id === updated.id ? updated : t)))
         setError(null)
+        return true
       })
       .catch((error) => {
         setError(errorMessage(error, 'タスクを更新'))
@@ -147,6 +179,7 @@ function App() {
         if (isNotFound(error)) {
           setTasks((prev) => prev.filter((t) => t.id !== id))
         }
+        return false
       })
   }
 
@@ -168,7 +201,16 @@ function App() {
   }
 
   // カードの × で削除が確かめられたときに呼ばれる（確認のダイアログはカードの側で出す）
+  // 削除の通信中の番号。同じものを続けて削除しようとしたとき（2 回押し）、2 本目は送らない
+  const deletingTasks = useRef(new Set<number>())
+  const deletingColumns = useRef(new Set<number>())
+
   function handleDelete(id: number) {
+    if (deletingTasks.current.has(id)) {
+      return
+    }
+    deletingTasks.current.add(id)
+    // すでにない番号（404）は api 側で成功として扱われるので、ここには成功と同じ形で届く
     deleteTask(id)
       .then(() => {
         // 削除できたら、同じ id のタスクだけを一覧から外す（ほかはそのまま）
@@ -177,6 +219,9 @@ function App() {
       })
       .catch((error) => {
         setError(errorMessage(error, 'タスクを削除'))
+      })
+      .finally(() => {
+        deletingTasks.current.delete(id)
       })
   }
 
@@ -223,7 +268,7 @@ function App() {
       })
       .catch((error) => {
         setError(errorMessage(error, '並び替えを保存'))
-        loadTasks(filters)
+        loadTasks(filtersRef.current)
       })
   }
 
@@ -258,25 +303,32 @@ function App() {
       .then(() => setError(null))
       .catch((error) => {
         setError(errorMessage(error, '並び替えを保存'))
-        loadTasks(filters)
+        loadTasks(filtersRef.current)
       })
   }
 
   // 「＋ 列を追加」のフォームで「列を追加」が押されたときに呼ばれる。足した列は右端に入る
-  function handleAddColumn(name: string) {
-    createColumn(name)
-      .then((created) => {
-        setColumns((prev) => [...prev, created])
+  function handleAddColumn(name: string, idempotencyKey: string): Promise<AddResult> {
+    return createColumn(name, idempotencyKey)
+      .then((created): AddResult => {
+        // 同じ id の列がすでにあれば、足さずに入れ替える（タスクの追加と同じ）
+        setColumns((prev) => (prev.some((c) => c.id === created.id) ? prev.map((c) => (c.id === created.id ? created : c)) : [...prev, created]))
         setError(null)
+        return 'ok'
       })
-      .catch((error) => {
-        setError(errorMessage(error, '列を追加'))
+      .catch((error): AddResult => {
+        setError(addErrorMessage(error, '列を追加'))
+        return addFailureResult(error)
       })
   }
 
   // 列の × で削除が確かめられたときに呼ばれる（確認のダイアログは列の側で出す）
   // タスクが入っている列なら、サーバーが断る（409）。そのときは理由を画面に出し、列はそのまま残す
   function handleDeleteColumn(id: number) {
+    if (deletingColumns.current.has(id)) {
+      return // 同じ列の削除が通信中（2 回押し）。2 本目は送らない
+    }
+    deletingColumns.current.add(id)
     deleteColumn(id)
       .then(() => {
         setColumns((prev) => prev.filter((column) => column.id !== id))
@@ -285,11 +337,15 @@ function App() {
       .catch((error) => {
         setError(errorMessage(error, '列を削除'))
       })
+      .finally(() => {
+        deletingColumns.current.delete(id)
+      })
   }
 
   // 「⬇ 書き出す」が押されたときに呼ばれる。全部のタスクを JSON のファイルとして保存させる
-  function handleExport() {
-    exportTasks()
+  // 終わる（成功・失敗とも）と解決する Promise を返す。ボタンの「送信中」の表示に使う
+  function handleExport(): Promise<void> {
+    return exportTasks()
       .then(() => setError(null))
       .catch((error) => {
         setError(errorMessage(error, 'タスクを書き出し'))
@@ -299,12 +355,14 @@ function App() {
   // 「⬆ 読み込む」でファイルが選ばれ、確認で OK が押されたときに呼ばれる
   // 今の列とタスクを全部、ファイルの列とタスクに置き換える。成功したら、列と、今の条件でのタスクを取り直す
   // 失敗したときは、サーバーが何も変えていないので、画面もそのままでよい
-  function handleImport(file: File) {
-    importTasks(file)
-      .then(() => {
+  // 終わる（成功・失敗とも）と解決する Promise を返す。ボタンの「送信中」の表示に使う
+  function handleImport(file: File): Promise<void> {
+    return importTasks(file)
+      .then(async () => {
         setError(null)
-        loadColumns()
-        loadTasks(filters)
+        // 列とタスクの取り直しが終わるまで待つ（ボタンが先に戻ると、古い列へ追加して 400 になるため）
+        // 取り直しの失敗は、loadColumns・loadTasks がそれぞれ画面に出す
+        await Promise.all([loadColumns(), loadTasks(filtersRef.current)])
       })
       .catch((error) => {
         setError(errorMessage(error, 'ファイルを読み込み'))

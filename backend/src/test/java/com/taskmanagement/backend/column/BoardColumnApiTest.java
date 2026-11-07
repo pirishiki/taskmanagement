@@ -231,11 +231,15 @@ class BoardColumnApiTest {
     }
 
     @Test
-    @DisplayName("ない列を消そうとすると 404 になる")
-    void deleteUnknownColumnIsNotFound() {
+    @DisplayName("ほかの画面ですでに消された列を消しても 204 になり、ほかの列は変わらない")
+    void deleteAlreadyDeletedColumnIsNoContent() {
+        // 準備：ほかの画面（別のタブ）が先に消した状態を、DB から直接消して作る
+        // （DS-04 は、同じ API で 2 回消す場面と、一度もなかった番号を見る。ここは「先に別の所で消された」場面）
         BoardColumn gone = columnRepository.save(new BoardColumn("消す列", 9.0, false, false));
         columnRepository.delete(gone);
 
-        assertThat(mvc.delete().uri("/api/columns/{id}", gone.getId())).hasStatus(HttpStatus.NOT_FOUND);
+        // 実行と確かめる：削除は「なくなっていること」が目的なので 204。基本の3列は、そのまま残る
+        assertThat(mvc.delete().uri("/api/columns/{id}", gone.getId())).hasStatus(HttpStatus.NO_CONTENT);
+        assertThat(columnNames()).containsExactly("やるべきこと", "進行中", "終わったこと");
     }
 }

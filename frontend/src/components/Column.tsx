@@ -1,7 +1,7 @@
 import { useDroppable } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import type { BoardColumn } from '../types/column'
-import type { NewTask, SortCriterion, Task, TaskContent, TaskPatch } from '../types/task'
+import type { AddResult, NewTask, SortCriterion, Task, TaskContent, TaskPatch } from '../types/task'
 import AddTaskForm from './AddTaskForm'
 import TaskCard from './TaskCard'
 
@@ -21,8 +21,8 @@ type Props = {
   tasks: Task[]
   // 完了の列の番号（カードの ○ ボタンで使う）
   doneColumnId: number | null
-  onAdd: (task: NewTask) => void
-  onUpdate: (id: number, task: TaskContent) => void
+  onAdd: (task: NewTask, idempotencyKey: string) => Promise<AddResult>
+  onUpdate: (id: number, task: TaskContent) => Promise<boolean>
   onPatch: (id: number, patch: TaskPatch) => void
   onDelete: (id: number) => void
   onSort: (columnId: number, criterion: SortCriterion) => void
@@ -105,7 +105,7 @@ function Column({ column, tasks, doneColumnId, onAdd, onUpdate, onPatch, onDelet
         </div>
       </SortableContext>
       {/* フォームから届いた中身に、この列の番号を書き足して上に伝える */}
-      <AddTaskForm onAdd={(task) => onAdd({ ...task, columnId: column.id })} />
+      <AddTaskForm onAdd={(task, key) => onAdd({ ...task, columnId: column.id }, key)} />
     </section>
   )
 }
