@@ -2,6 +2,7 @@ package com.taskmanagement.backend.error;
 
 import com.taskmanagement.backend.column.ColumnNotFoundException;
 import com.taskmanagement.backend.task.TaskNotFoundException;
+import com.taskmanagement.backend.write.WriteLockTimeoutException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
@@ -66,6 +67,15 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     @ExceptionHandler(ColumnNotFoundException.class)
     public ProblemDetail handleColumnNotFound(ColumnNotFoundException ex) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, ex.getMessage());
+    }
+
+    // 書き込みの鍵を、上限の時間までに取れなかった（503：いまは受け付けられないが、少し待てば受け付けられる）
+    // ほかの書き込みが長く続いているときに起きる。データは何も変えていないので、そのまま送り直してよい
+    // 起きたことは、あとで調べられるようにサーバーのログにも残す（ふだんは起きないため）
+    @ExceptionHandler(WriteLockTimeoutException.class)
+    public ProblemDetail handleWriteLockTimeout(WriteLockTimeoutException ex) {
+        LOG.warn("書き込みの鍵を、上限の時間までに取れませんでした", ex);
+        return ProblemDetail.forStatusAndDetail(HttpStatus.SERVICE_UNAVAILABLE, ex.getMessage());
     }
 
     // 上のどれにも当てはまらない、思いがけないエラー（500）

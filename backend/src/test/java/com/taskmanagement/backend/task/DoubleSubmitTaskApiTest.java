@@ -165,21 +165,61 @@ class DoubleSubmitTaskApiTest {
     }
 
     @Test
-    @DisplayName("DS-11 指紋は前後の空白を除いたもの。優先度・列を省略した送り方と、既定値を書いた送り方は同じ中身として扱われる")
+    @DisplayName("DS-11 指紋は前後の空白を除いたもの。優先度を省略した送り方と、medium を書いた送り方は同じ中身として扱われる")
     void ds11FingerprintNormalizesBlankAndDefaults() {
         String key = newKey();
 
         MvcTestResult first = postTask(key, """
                 {"text": "牛乳を買う"}
                 """);
-        // 空白つきの文章、優先度 medium・一番左の列を明示。設計書 2 節の指紋の決まりでは同じ中身
+        // 空白つきの文章、優先度 medium を明示。設計書 2 節の指紋の決まりでは同じ中身（medium は変わらない既定値のため）
         MvcTestResult second = postTask(key, """
-                {"text": " 牛乳を買う ", "priority": "medium", "columnId": %d}
-                """.formatted(todo));
+                {"text": " 牛乳を買う ", "priority": "medium"}
+                """);
 
         assertThat(first).hasStatus(HttpStatus.CREATED);
         assertThat(second).hasStatus(HttpStatus.CREATED);
         assertThat(idOf(second)).isEqualTo(idOf(first));
+        assertThat(taskRepository.count()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("DS-11 列を省略して追加したあと、列を並べ替えても、同じ札・同じ内容の送り直しは 201 で同じ id。タスクは 1 件")
+    void ds11OmittedColumnSurvivesColumnReorder() {
+        String key = newKey();
+        String body = """
+                {"text": "牛乳を買う"}
+                """;
+        MvcTestResult first = postTask(key, body);
+        assertThat(first).hasStatus(HttpStatus.CREATED);
+
+        // 一番左の列を入れかえる（進行中・やるべきこと・終わったこと の順にする）
+        Long done = columnRepository.findByDoneTrue().orElseThrow().getId();
+        assertThat(mvc.put().uri("/api/columns/order").contentType(MediaType.APPLICATION_JSON).content("""
+                {"orderedIds": [%d, %d, %d]}
+                """.formatted(doing, todo, done))).hasStatusOk();
+
+        // 送り直しは「同じ要求」。指紋は送られたとおり（列は省略のまま）なので、一番左の列が変わっても同じ中身
+        MvcTestResult second = postTask(key, body);
+
+        assertThat(second).hasStatus(HttpStatus.CREATED);
+        assertThat(idOf(second)).isEqualTo(idOf(first));
+        assertThat(taskRepository.count()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("DS-12 列を省略した送り方と、列の番号を書いた送り方は、ちがう中身として扱われる（同じ札なら 409）")
+    void ds12OmittedColumnDiffersFromExplicitColumn() {
+        String key = newKey();
+        assertThat(postTask(key, """
+                {"text": "牛乳を買う"}
+                """)).hasStatus(HttpStatus.CREATED);
+
+        // 指紋は送られたとおりの要求から作る。省略を一番左の列に置きかえない
+        assertThat(postTask(key, """
+                {"text": "牛乳を買う", "columnId": %d}
+                """.formatted(todo))).hasStatus(HttpStatus.CONFLICT);
+
         assertThat(taskRepository.count()).isEqualTo(1);
     }
 

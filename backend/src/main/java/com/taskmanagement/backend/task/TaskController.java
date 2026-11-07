@@ -1,5 +1,6 @@
 package com.taskmanagement.backend.task;
 
+import com.taskmanagement.backend.idempotency.RequestTokens;
 import jakarta.validation.Valid;
 import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
@@ -12,6 +13,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -75,9 +77,13 @@ public class TaskController {
                 .orElseThrow(() -> new TaskNotFoundException(id));
     }
 
+    // ヘッダー Idempotency-Key（番号札、UUID）は省略できる。付けると、同じ札で送り直してもタスクは 1 件だけ
+    // （2 回目は 1 回目と同じタスクを返す）。札が UUID の形でなければ 400（RequestTokens.parseKey）
     @PostMapping
-    public ResponseEntity<TaskResponse> createTask(@Valid @RequestBody TaskRequest request) {
-        Task created = taskService.createTask(request);
+    public ResponseEntity<TaskResponse> createTask(
+            @RequestHeader(name = RequestTokens.HEADER, required = false) String idempotencyKey,
+            @Valid @RequestBody TaskRequest request) {
+        Task created = taskService.createTask(request, RequestTokens.parseKey(idempotencyKey));
         return ResponseEntity.status(HttpStatus.CREATED).body(TaskResponse.from(created));
     }
 
@@ -95,11 +101,10 @@ public class TaskController {
                 .orElseThrow(() -> new TaskNotFoundException(id));
     }
 
+    // 削除は、もうない番号でも 204（2 回目の削除・別のタブで先に消した削除も成功にする）
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteTask(@PathVariable Long id) {
-        if (!taskService.deleteTask(id)) {
-            throw new TaskNotFoundException(id);
-        }
+        taskService.deleteTask(id);
         return ResponseEntity.noContent().build();
     }
 

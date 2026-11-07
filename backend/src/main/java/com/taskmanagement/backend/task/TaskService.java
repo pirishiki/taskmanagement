@@ -2,6 +2,7 @@ package com.taskmanagement.backend.task;
 
 import com.taskmanagement.backend.column.BoardColumn;
 import com.taskmanagement.backend.column.BoardColumnRepository;
+import com.taskmanagement.backend.idempotency.RequestTokens;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.data.jpa.domain.Specification;
@@ -18,11 +19,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
 // @Transactional：メソッドの中の DB 操作を「ひとまとまり」にする。途中で失敗したら、そのメソッドでした変更を全部取り消す
 // クラスに付けると、すべての public メソッドに効く。読み取りだけのメソッドは readOnly = true にして、書き込まないことを伝える
+// 書き込みのメソッド（readOnly でないもの）は、始めるときに書き込みの鍵をとり、ほかの書き込みと 1 つずつ順番に動く
+// （WriteLockTransactionManager。読み取りだけのメソッドに readOnly を付け忘れると、書き込みと同じに待たされる）
 @Service
 @Transactional
 public class TaskService {
@@ -46,10 +50,15 @@ public class TaskService {
     // 「今日」や「今」を決める壁の時計（日本時間。ClockConfig）。サーバーの時計（LocalDate.now()）は使わない
     private final Clock clock;
 
-    public TaskService(TaskRepository taskRepository, BoardColumnRepository columnRepository, Clock clock) {
+    // タスクの追加の番号札（Idempotency-Key）を記録・確かめる係
+    private final RequestTokens requestTokens;
+
+    public TaskService(TaskRepository taskRepository, BoardColumnRepository columnRepository, Clock clock,
+            RequestTokens requestTokens) {
         this.taskRepository = taskRepository;
         this.columnRepository = columnRepository;
         this.clock = clock;
+        this.requestTokens = requestTokens;
     }
 
     // タスクを取ってくる。keyword・priorities・due は、どれも省略できる（null なら、その条件では絞らない）
@@ -61,7 +70,8 @@ public class TaskService {
                 TaskSpecifications.priorityIn(priorities),
                 TaskSpecifications.dueMatches(due, LocalDate.now(clock)));
         // 並び順は、列（columnId）ごとにまとめ、その中は sortOrder の小さい順
-        return taskRepository.findAll(conditions, Sort.by("columnId", "sortOrder"));
+        // sortOrder が同じタスクどうしは id の小さい順（DB の都合で並びが毎回変わらないように）
+        return taskRepository.findAll(conditions, Sort.by("columnId", "sortOrder", "id"));
     }
 
     @Transactional(readOnly = true)
@@ -180,13 +190,42 @@ public class TaskService {
         return columns;
     }
 
-    public Task createTask(TaskRequest request) {
-        // 省略されたときの値：列は一番左の列、priority は「中」
-        Long columnId = request.columnId() != null ? requireColumn(request.columnId()) : firstColumnId();
-        TaskPriority priority = request.priority() != null ? request.priority() : TaskPriority.MEDIUM;
+    // タスクを作る。idempotencyKey は番号札（ヘッダー Idempotency-Key）。null なら札なし（今までどおり毎回作る）
+    // 札つきで、同じ札がもう使われていたら、新しく作らず、1 回目に作ったタスクを返す（docs/二重送信の設計書.md の 2 節）
+    // ・中身がちがう → 409（RequestTokens が投げる）
+    // ・1 回目に作ったタスクが、そのあと消されている → 404（作り直さない。消した人の意思を戻さない）
+    public Task createTask(TaskRequest request, UUID idempotencyKey) {
+        // 追加のたびに、24 時間をこえた古い札を消す（札なしの追加でも）
+        requestTokens.deleteExpired();
 
-        Task task = new Task(request.text().trim(), columnId, priority, request.dueDate(), nextOrderIn(columnId));
-        return taskRepository.save(task);
+        // 省略されたときの値：列は一番左の列、priority は「中」
+        TaskPriority priority = request.priority() != null ? request.priority() : TaskPriority.MEDIUM;
+        String text = request.text().trim();
+
+        if (idempotencyKey != null) {
+            // 指紋は「送られたとおりの要求」から作る（設計書 2 節）。送り直しは同じ要求なので、同じ指紋になる
+            // ・列の番号は、省略なら省略（null）のまま入れる。「一番左の列」は、列の並べ替えで変わるので入れない
+            //   （入れると、並べ替えのあとの送り直しが、中身がちがうと見なされて 409 になってしまう）
+            // ・優先度の省略は medium として入れる（medium はいつも同じ値なので、省略と medium の明示を同じ中身にできる）
+            String fingerprint = RequestTokens.fingerprint(text, priority.getValue(), request.dueDate(),
+                    request.columnId());
+            Optional<Long> createdBefore = requestTokens.claim(idempotencyKey, RequestTokens.Kind.TASK, fingerprint);
+            if (createdBefore.isPresent()) {
+                Long id = createdBefore.get();
+                return taskRepository.findById(id).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "この番号札で作ったタスク（id が " + id + "）は、すでに消されています"));
+            }
+        }
+
+        // 列を決めて、あるかを確かめるのは、札を確かめたあと（1 回目のタスクを返すだけのときは、列がなくなっていても返せるように）
+        // ここで 400 になったときは、上で入れた札も一緒に取り消される（同じトランザクションのため）
+        Long columnId = request.columnId() != null ? requireColumn(request.columnId()) : firstColumnId();
+        Task task = new Task(text, columnId, priority, request.dueDate(), nextOrderIn(columnId));
+        Task created = taskRepository.save(task);
+        if (idempotencyKey != null) {
+            requestTokens.complete(idempotencyKey, created.getId());
+        }
+        return created;
     }
 
     // PUT 用：タスクの中身を丸ごと書き換える。タスクがなければ空の Optional を返す
@@ -231,13 +270,11 @@ public class TaskService {
         });
     }
 
-    // タスクを削除する。あれば消して true、なければ何もせず false を返す
-    public boolean deleteTask(Long id) {
-        if (!taskRepository.existsById(id)) {
-            return false;
-        }
-        taskRepository.deleteById(id);
-        return true;
+    // タスクを削除する。もうない番号なら、何もしない（Controller は、どちらでも 204 を返す）
+    // 削除の目的は「そのタスクがなくなっていること」なので、2 回目の削除・別のタブで先に消した削除も成功にする
+    // （docs/二重送信の設計書.md の 3 節）
+    public void deleteTask(Long id) {
+        taskRepository.findById(id).ifPresent(taskRepository::delete);
     }
 
     // ドラッグ＆ドロップ用：カード（id）を、移動先の列（columnId）の、prevId のカードのすぐ下に入れる
@@ -276,14 +313,15 @@ public class TaskService {
     private Optional<Double> orderBelow(Task prev, Long columnId, Long movingId) {
         if (prev == null) {
             // 一番上のカードより 1 小さくする（列が空なら 0）
-            return Optional.of(taskRepository.findFirstByColumnIdAndIdNotOrderBySortOrderAsc(columnId, movingId)
+            return Optional.of(taskRepository.findFirstByColumnIdAndIdNotOrderBySortOrderAscIdAsc(columnId, movingId)
                     .map(first -> first.getSortOrder() - 1)
                     .orElse(0.0));
         }
 
         // DB で本当に prev のすぐ下にあるカード（画面に見えていなくても）を探す
-        Optional<Task> next = taskRepository.findFirstByColumnIdAndSortOrderGreaterThanAndIdNotOrderBySortOrderAsc(
-                columnId, prev.getSortOrder(), movingId);
+        Optional<Task> next = taskRepository
+                .findFirstByColumnIdAndSortOrderGreaterThanAndIdNotOrderBySortOrderAscIdAsc(
+                        columnId, prev.getSortOrder(), movingId);
         if (next.isEmpty()) {
             return Optional.of(prev.getSortOrder() + 1); // prev が一番下なら、その下に入れる
         }
@@ -344,7 +382,7 @@ public class TaskService {
     // 同じ列で一番大きい並び順より1つ大きくすると、列の一番下に入る（列が空なら 0）
     // 件数ではなく最大値を使うのは、削除で並び順に隙間ができても、ほかのタスクと同じ番号にならないようにするため
     private double nextOrderIn(Long columnId) {
-        return taskRepository.findTopByColumnIdOrderBySortOrderDesc(columnId)
+        return taskRepository.findTopByColumnIdOrderBySortOrderDescIdDesc(columnId)
                 .map(last -> last.getSortOrder() + 1)
                 .orElse(0.0);
     }
@@ -360,7 +398,7 @@ public class TaskService {
 
     // 一番左の列の番号。列が1つもないときは 400（完了の列は消せないので、ふだんは起きない）
     private Long firstColumnId() {
-        return columnRepository.findTopByOrderBySortOrderAsc()
+        return columnRepository.findTopByOrderBySortOrderAscIdAsc()
                 .map(BoardColumn::getId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "タスクを入れる列がありません"));
     }
