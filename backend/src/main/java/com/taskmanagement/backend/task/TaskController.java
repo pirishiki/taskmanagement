@@ -1,6 +1,7 @@
 package com.taskmanagement.backend.task;
 
 import com.taskmanagement.backend.idempotency.RequestTokens;
+import com.taskmanagement.backend.version.VersionCounts;
 import jakarta.validation.Valid;
 import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
@@ -102,9 +103,11 @@ public class TaskController {
     }
 
     // 削除は、もうない番号でも 204（2 回目の削除・別のタブで先に消した削除も成功にする）
+    // 例：DELETE /api/tasks/5?version=3 → 画面が見ていた版（省略できる）。あるのに今の版とちがえば 409
+    // version が数字でなければ、Spring の決まった 400
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteTask(@PathVariable Long id) {
-        taskService.deleteTask(id);
+    public ResponseEntity<Void> deleteTask(@PathVariable Long id, @RequestParam(required = false) Long version) {
+        taskService.deleteTask(id, version);
         return ResponseEntity.noContent().build();
     }
 
@@ -116,9 +119,14 @@ public class TaskController {
     }
 
     // 自動並び替え用：1つの列の中で、送られてきたカードどうしの席（番号）を入れ替える
+    // 例：PUT /api/tasks/reorder  { "columnId": 1, "orderedIds": [9, 4, 6], "versions": [0, 2, 1] }
+    // 返事は 200 で、並べ直したタスクを orderedIds の順に並べた配列（新しい sortOrder・version が入る。消えたものは入らない）
     @PutMapping("/reorder")
-    public ResponseEntity<Void> reorder(@Valid @RequestBody ReorderRequest request) {
-        taskService.reorder(request);
-        return ResponseEntity.noContent().build();
+    public List<TaskResponse> reorder(@Valid @RequestBody ReorderRequest request) {
+        // 版の数は、書き込みの鍵をとる前（Service を呼ぶ前）に確かめる（入力チェックの 1 つ。docs/同時編集の設計書.md の 4.3 節）
+        VersionCounts.requireSameCount(request.orderedIds(), request.versions());
+        return taskService.reorder(request).stream()
+                .map(TaskResponse::from)
+                .toList();
     }
 }

@@ -3,6 +3,7 @@ package com.taskmanagement.backend.task;
 import com.taskmanagement.backend.column.BoardColumn;
 import com.taskmanagement.backend.column.BoardColumnRepository;
 import com.taskmanagement.backend.idempotency.RequestTokens;
+import com.taskmanagement.backend.version.VersionConflictException;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.data.jpa.domain.Specification;
@@ -234,8 +235,11 @@ public class TaskService {
     }
 
     // PUT 用：タスクの中身を丸ごと書き換える。タスクがなければ空の Optional を返す
+    // 確かめる順番（docs/同時編集の設計書.md の 4.3 節）：ある → 版 → そのほか（ない列の columnId は 400）
+    // 版を先に見るのは、古い画面からの頼みは古い状態をもとにしているので、「入力がおかしい」より「ほかで変わった」と知らせるため
     public Optional<Task> updateTask(Long id, TaskRequest request) {
         return taskRepository.findById(id).map(task -> {
+            checkVersion(request.version(), task);
             // columnId と priority は省略されたら今の値のまま（null を入れない）
             Long columnId = request.columnId() != null ? requireColumn(request.columnId()) : task.getColumnId();
             TaskPriority priority = request.priority() != null ? request.priority() : task.getPriority();
@@ -254,8 +258,10 @@ public class TaskService {
     }
 
     // PATCH 用：送られてきた項目（null でないもの）だけを書き換える。タスクがなければ空の Optional を返す
+    // 確かめる順番は PUT と同じ（ある → 版 → ない列の columnId は 400）
     public Optional<Task> patchTask(Long id, TaskPatchRequest request) {
         return taskRepository.findById(id).map(task -> {
+            checkVersion(request.version(), task);
             // 別の列に移るときは、移動先の列の一番下に置く（完了ボタンなら、完了の列の一番下）
             if (request.columnId() != null && !request.columnId().equals(task.getColumnId())) {
                 Long columnId = requireColumn(request.columnId());
@@ -277,40 +283,67 @@ public class TaskService {
 
     // タスクを削除する。もうない番号なら、何もしない（Controller は、どちらでも 204 を返す）
     // 削除の目的は「そのタスクがなくなっていること」なので、2 回目の削除・別のタブで先に消した削除も成功にする
-    // （docs/二重送信の設計書.md の 3 節）
-    public void deleteTask(Long id) {
-        taskRepository.findById(id).ifPresent(taskRepository::delete);
+    // （docs/二重送信の設計書.md の 3 節）。もうないときは、版は見ない
+    // あるのに版（version。null なら確かめない）がちがえば 409：ほかの画面で直した内容を、古い確認のまま消さない
+    public void deleteTask(Long id, Long version) {
+        taskRepository.findById(id).ifPresent(task -> {
+            checkVersion(version, task);
+            taskRepository.delete(task);
+        });
+    }
+
+    // 画面が見ていた版（expected。null なら省略＝確かめない）が、タスクの今の版とちがえば 409（current に今の状態）
+    // 書き込みの鍵をとったあとに呼ぶので、比べてから書くまでの間に、ほかの書き込みが割り込まない
+    private static void checkVersion(Long expected, Task task) {
+        VersionConflictException.check(expected, task.getVersion(), VersionConflictException.TASK,
+                () -> TaskResponse.from(task));
     }
 
     // ドラッグ＆ドロップ用：カード（id）を、移動先の列（columnId）の、prevId のカードのすぐ下に入れる
     // 番号を変えるのは、動かしたカードだけ。ほかのカードには触らないので、画面に見えていないカードの順番もずれない
     // 動かすカードや prevId のカードがなければ 404、移動先の列がない・prevId が移動先の列にないなどのおかしな頼みなら 400
+    // 確かめる順番（docs/同時編集の設計書.md の 4.3 節）：動かすカードがある（404）→ 動かすカードの版（409）→ 列・prevId（400・404）
+    // prevId のカードの版は比べない（「Y のすぐ下に入れて」は、Y の位置が変わっていても意味が通るため。4.4 節）
     public Task move(Long id, MoveRequest request) {
         Task task = taskRepository.findById(id).orElseThrow(() -> new TaskNotFoundException(id));
+        checkVersion(request.version(), task);
         Long columnId = requireColumn(request.columnId());
-
-        Task prev = null; // null のままなら、列の一番上に入れる
-        if (request.prevId() != null) {
-            if (request.prevId().equals(id)) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "動かすカード自身を、上のカード（prevId）にはできません");
-            }
-            prev = taskRepository.findById(request.prevId())
-                    .orElseThrow(() -> new TaskNotFoundException(request.prevId()));
-            if (!prev.getColumnId().equals(columnId)) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "上のカード（prevId）が、移動先の列にありません");
-            }
-        }
+        Task prev = findPrev(id, request.prevId(), columnId); // null なら、列の一番上に入れる
 
         // 番号のすき間がなくなっていたら、列を 0, 1, 2… と振り直してから、もう一度決める
         Optional<Double> sortOrder = orderBelow(prev, columnId, id);
         if (sortOrder.isEmpty()) {
-            renumber(columnId);
+            // 振り直しは、版に触らない一括の UPDATE で行う（docs/同時編集の設計書.md の 3.2 節）
+            // 見た目の順番は変わらないので、ほかのカードの版は上げない。上げると、この画面の次の操作がまちがって止まる
+            // 一括の UPDATE は、手元に読んであるタスク（task・prev）を素通りして DB を直接書き換えるので、読み直す
+            // （すき間がないのは prev のすぐ下を探したときだけなので、ここに来るとき prev は null ではない）
+            taskRepository.renumber(columnId);
+            task = taskRepository.findById(id).orElseThrow(() -> new TaskNotFoundException(id));
+            Long prevId = Objects.requireNonNull(prev).getId();
+            prev = taskRepository.findById(prevId).orElseThrow(() -> new TaskNotFoundException(prevId));
             sortOrder = orderBelow(prev, columnId, id);
         }
 
+        // 動かしたカードは、列か番号が変わるので、保存するときに版が 1 上がる
         task.setColumnId(columnId);
         task.setSortOrder(sortOrder.orElseThrow());
         return taskRepository.save(task);
+    }
+
+    // 上のカード（prevId）を取ってくる。prevId が null なら null（列の一番上に入れる）
+    // 動かすカード自身なら 400、ないなら 404、移動先の列になければ 400（どれも今までどおり）
+    private Task findPrev(Long id, Long prevId, Long columnId) {
+        if (prevId == null) {
+            return null;
+        }
+        if (prevId.equals(id)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "動かすカード自身を、上のカード（prevId）にはできません");
+        }
+        Task prev = taskRepository.findById(prevId).orElseThrow(() -> new TaskNotFoundException(prevId));
+        if (!prev.getColumnId().equals(columnId)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "上のカード（prevId）が、移動先の列にありません");
+        }
+        return prev;
     }
 
     // prev のすぐ下に入れるときの番号を決める（prev が null なら列の一番上）。すき間がなければ空の Optional
@@ -339,23 +372,30 @@ public class TaskService {
         return Optional.of(middle);
     }
 
-    // 列の番号を、今の順番のまま上から 0, 1, 2… と振り直す（真ん中の番号を作るすき間を、また空けるため）
-    private void renumber(Long columnId) {
-        List<Task> column = taskRepository.findByColumnIdOrderBySortOrderAsc(columnId);
-        for (int position = 0; position < column.size(); position++) {
-            column.get(position).setSortOrder((double) position);
-        }
-        taskRepository.saveAll(column);
-    }
-
     // 自動並び替え（優先度順・期限が近い順）用：1つの列（columnId）の中で、送られてきたカードの順番を並べ替える
     // 「席の入れ替え」で行う：送られてきたカードが今持っている番号（席）を小さい順に並べ、送られてきた順番に配り直す
     // 送られてこなかったカード（絞り込みで画面に見えていないカード）の番号には触らないので、その順番はずれない
     // 列を移すことはしない（それは move の仕事）。別の列のカードが混じっていたら 400
-    public void reorder(ReorderRequest request) {
+    // 版（versions。orderedIds と同じ順。null なら確かめない）が 1 枚でもちがえば、どのカードも動かさずに 409
+    // （一部だけ並べ替わると、並びが中途半端になるため。docs/同時編集の設計書.md の 4.4 節）
+    // 返事は、並べ直したタスク（もう消えて飛ばしたものを除く）を、orderedIds の順に並べたもの（画面が新しい版を知るため）
+    public List<Task> reorder(ReorderRequest request) {
         // 取ってきたタスクを「ID → タスク」の表（Map）にしておくと、ID からすぐに引ける
         Map<Long, Task> tasksById = taskRepository.findAllById(request.orderedIds()).stream()
                 .collect(Collectors.toMap(Task::getId, Function.identity()));
+
+        // 版は「別の列のカードが混じっている（400）」より先に見る（4.3 節）
+        // ほかの画面で別の列へ動かされたカードは版が上がっているので、400 ではなく 409（ほかで変わった）と知らせられる
+        // もう消えたカード（表にない id）は、今までどおり飛ばし、版も見ない。同じ id が 2 回あるときは、両方の版を比べる
+        if (request.versions() != null) {
+            for (int i = 0; i < request.orderedIds().size(); i++) {
+                Task task = tasksById.get(request.orderedIds().get(i));
+                if (task != null) {
+                    VersionConflictException.check(request.versions().get(i), task.getVersion(),
+                            VersionConflictException.TASK_REORDER, () -> null);
+                }
+            }
+        }
 
         for (Task task : tasksById.values()) {
             if (!task.getColumnId().equals(request.columnId())) {
@@ -377,11 +417,12 @@ public class TaskService {
                 .map(tasksById::get)
                 .filter(Objects::nonNull)
                 .toList();
+        // 席が変わったカードだけ、保存するときに版が 1 上がる（同じ席に座り直したカードは、中身が変わらないので上がらない）
         for (int seat = 0; seat < ordered.size(); seat++) {
             ordered.get(seat).setSortOrder(seats.get(seat));
         }
 
-        taskRepository.saveAll(ordered);
+        return taskRepository.saveAll(ordered);
     }
 
     // 同じ列で一番大きい並び順より1つ大きくすると、列の一番下に入る（列が空なら 0）

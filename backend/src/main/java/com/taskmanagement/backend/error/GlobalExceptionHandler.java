@@ -1,10 +1,13 @@
 package com.taskmanagement.backend.error;
 
+import com.taskmanagement.backend.board.BoardChangedException;
 import com.taskmanagement.backend.column.ColumnNotFoundException;
 import com.taskmanagement.backend.task.TaskNotFoundException;
+import com.taskmanagement.backend.version.VersionConflictException;
 import com.taskmanagement.backend.write.WriteLockTimeoutException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
@@ -76,6 +79,39 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     public ProblemDetail handleWriteLockTimeout(WriteLockTimeoutException ex) {
         LOG.warn("書き込みの鍵を、上限の時間までに取れませんでした", ex);
         return ProblemDetail.forStatusAndDetail(HttpStatus.SERVICE_UNAVAILABLE, ex.getMessage());
+    }
+
+    // 版のずれ（409）：画面が見ていた版が今の版とちがう。何も書き込んでいない（docs/同時編集の設計書.md の 4.2 節）
+    // code で、同じ 409 のほかの理由と見分けられるようにする。1 つのものが対象の操作では、current に今の状態を入れる
+    // （画面は、もう 1 回取りに行かなくても、最新の内容を見せられる）
+    @ExceptionHandler(VersionConflictException.class)
+    public ProblemDetail handleVersionConflict(VersionConflictException ex) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, ex.getMessage());
+        problem.setProperty("code", VersionConflictException.CODE);
+        if (ex.getCurrent() != null) {
+            problem.setProperty("current", ex.getCurrent());
+        }
+        return problem;
+    }
+
+    // DB の安全網（409）：JPA の @Version が、書くときに版のずれに気づいた（UPDATE … WHERE version = … が 0 行だった）
+    // 書き込みの鍵があるので、ふだんは起きない。起きたら 500 ではなく、版のずれと同じ 409 にする（current はない）
+    // 起きたことは、あとで調べられるようにサーバーのログにも残す
+    @ExceptionHandler(OptimisticLockingFailureException.class)
+    public ProblemDetail handleOptimisticLockingFailure(OptimisticLockingFailureException ex) {
+        LOG.warn("DB の安全網（@Version）が、版のずれに気づきました", ex);
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT,
+                VersionConflictException.SAFETY_NET);
+        problem.setProperty("code", VersionConflictException.CODE);
+        return problem;
+    }
+
+    // ボードの番号がちがう（409）：DB が作り直されている。画面は、読み込み直すように知らせる（docs/同時編集の設計書.md の 5 節）
+    @ExceptionHandler(BoardChangedException.class)
+    public ProblemDetail handleBoardChanged(BoardChangedException ex) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, ex.getMessage());
+        problem.setProperty("code", BoardChangedException.CODE);
+        return problem;
     }
 
     // 上のどれにも当てはまらない、思いがけないエラー（500）

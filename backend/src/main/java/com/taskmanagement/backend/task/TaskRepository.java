@@ -2,6 +2,7 @@ package com.taskmanagement.backend.task;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 
 import java.util.List;
@@ -33,4 +34,20 @@ public interface TaskRepository extends JpaRepository<Task, Long>, JpaSpecificat
     // 名前は今までのまま（テストからも使っている）。並びの第 2 のキー id は、@Query の ORDER BY で足している
     @Query("SELECT t FROM Task t WHERE t.columnId = :columnId ORDER BY t.sortOrder ASC, t.id ASC")
     List<Task> findByColumnIdOrderBySortOrderAsc(Long columnId);
+
+    // その列の番号を、今の順番（sortOrder の小さい順、同じなら id の小さい順）のまま、上から 0, 1, 2… と振り直す
+    // （move で、真ん中の番号を作るすき間がなくなったとき、すき間をまた空けるため）
+    // 版（version）には触らない一括の UPDATE にする（docs/同時編集の設計書.md の 3.2 節）。見た目の順番は変わらないので、
+    // 版を上げると、ほかのカードを見ている画面の次の操作が、まちがって 409 で止まってしまう
+    // ROW_NUMBER() OVER (ORDER BY …)：並べた順に 1, 2, 3… の番号を付ける SQL の関数。1 を引いて 0 から始める
+    // clearAutomatically：書き換えたあと、手元に読んであるタスク（古い番号のまま）を捨てる。使う側は読み直すこと
+    // flushAutomatically：書き換える前に、まだ DB に送っていない変更を先に送る（順番が入れ替わらないように）
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query(value = """
+            UPDATE tasks AS t SET sort_order = r.position
+            FROM (SELECT id, ROW_NUMBER() OVER (ORDER BY sort_order, id) - 1 AS position
+                  FROM tasks WHERE column_id = :columnId) AS r
+            WHERE t.id = r.id
+            """, nativeQuery = true)
+    void renumber(Long columnId);
 }

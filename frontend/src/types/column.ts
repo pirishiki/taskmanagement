@@ -8,4 +8,7 @@ export type BoardColumn = {
   sortOrder: number
   fixed: boolean
   done: boolean
+  // 版の番号（docs/同時編集の設計書.md の 3 節）。列の名前・並び順が変わるたびに 1 上がる
+  // 列を消すときに一緒に送る（ほかの画面で名前を変えたばかりの列を、古い名前の確認のまま消さないため）
+  version: number
 }

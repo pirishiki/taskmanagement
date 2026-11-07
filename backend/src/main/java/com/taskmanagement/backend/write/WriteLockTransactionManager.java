@@ -37,7 +37,8 @@ public class WriteLockTransactionManager extends JpaTransactionManager {
     private static final long serialVersionUID = 1L;
 
     // アプリ全体で 1 つの鍵の番号。数字そのものに意味はない（この DB はこのアプリ専用なので、ほかと重ならない）
-    static final long LOCK_KEY = 69_001L;
+    // テストデータの投入（db/seed-test-data.sql）も、同じ番号の鍵をとる（書き込みと投入が重ならないように。イシュー #71）
+    public static final long LOCK_KEY = 69_001L;
 
     // PostgreSQL の「鍵を待つ時間の上限をこえた」の印（SQLSTATE 55P03、lock_not_available）
     private static final String LOCK_NOT_AVAILABLE = "55P03";
@@ -45,9 +46,14 @@ public class WriteLockTransactionManager extends JpaTransactionManager {
     // 鍵を待つ時間の上限
     private final Duration lockTimeout;
 
-    public WriteLockTransactionManager(Duration lockTimeout) {
+    // 鍵をとった直後に、同じ接続で行う確かめ（ボードの番号の 2 回目の確かめ。BoardIdGuard。イシュー #71）
+    // 係はシリアライズ（バイト列にして保存）しないので、transient にしておく
+    private final transient AfterLockCheck afterLockCheck;
+
+    public WriteLockTransactionManager(Duration lockTimeout, AfterLockCheck afterLockCheck) {
         super();
         this.lockTimeout = lockTimeout;
+        this.afterLockCheck = afterLockCheck;
     }
 
     // 親（JpaTransactionManager）は、ここで EntityManagerFactory から Hibernate 用の係（JpaDialect）を受け取る
@@ -55,12 +61,13 @@ public class WriteLockTransactionManager extends JpaTransactionManager {
     @Override
     public void afterPropertiesSet() {
         super.afterPropertiesSet();
-        setJpaDialect(new WriteLockJpaDialect(lockTimeout.toMillis()));
+        setJpaDialect(new WriteLockJpaDialect(lockTimeout.toMillis(), afterLockCheck));
     }
 
     // 鍵の時間切れは、親が「トランザクションを始められなかった」（CannotCreateTransactionException）に包んで投げる
     // 親が、始めかけたトランザクションを取り消して片づけたあとなので、中の WriteLockTimeoutException を取り出して投げ直す
     // （GlobalExceptionHandler が 503 にできるように。ほかの理由で始められなかったときは、そのまま投げる＝500）
+    // 鍵のあとの確かめ（AfterLockCheck）が投げた例外も、同じく取り出して投げ直す（例：BoardChangedException → 409）
     // PMD の PreserveStackTrace を止める理由：はがすのは Spring が包んだ外側だけ。時間切れのもとの例外（SQL の 55P03）は、
     // 投げ直す WriteLockTimeoutException の中にそのまま入っているので、何が起きたかはサーバーのログでたどれる
     @SuppressWarnings("PMD.PreserveStackTrace")
@@ -71,6 +78,9 @@ public class WriteLockTransactionManager extends JpaTransactionManager {
         } catch (CannotCreateTransactionException ex) {
             if (ex.getCause() instanceof WriteLockTimeoutException timeout) {
                 throw timeout;
+            }
+            if (ex.getCause() instanceof AfterLockCheckFailed failed) {
+                throw failed.original;
             }
             throw ex;
         }
@@ -84,9 +94,12 @@ public class WriteLockTransactionManager extends JpaTransactionManager {
 
         private final long lockTimeoutMillis;
 
-        WriteLockJpaDialect(long lockTimeoutMillis) {
+        private final transient AfterLockCheck afterLockCheck;
+
+        WriteLockJpaDialect(long lockTimeoutMillis, AfterLockCheck afterLockCheck) {
             super();
             this.lockTimeoutMillis = lockTimeoutMillis;
+            this.afterLockCheck = afterLockCheck;
         }
 
         @Override
@@ -119,6 +132,27 @@ public class WriteLockTransactionManager extends JpaTransactionManager {
                 }
                 throw ex;
             }
+            // 3. 鍵をとった直後の確かめ（ボードの番号など）。だめなら、目印の例外に包んで投げる（doBegin が取り出す）
+            // 包むのは、Hibernate・Spring が途中で別の例外に包んでも、確かめが投げたものだと見分けられるようにするため
+            try {
+                afterLockCheck.check(connection);
+            } catch (RuntimeException ex) {
+                throw new AfterLockCheckFailed(ex);
+            }
+        }
+    }
+
+    // 鍵のあとの確かめが投げた例外を包む目印（このクラスの中だけで使う）
+    private static final class AfterLockCheckFailed extends RuntimeException {
+
+        private static final long serialVersionUID = 1L;
+
+        // 確かめが投げたもとの例外。doBegin が取り出して、そのまま投げ直す
+        private final RuntimeException original;
+
+        AfterLockCheckFailed(RuntimeException original) {
+            super(original);
+            this.original = original;
         }
     }
 }

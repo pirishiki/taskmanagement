@@ -1,7 +1,7 @@
 import { useSortable } from '@dnd-kit/sortable'
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 import { createPortal } from 'react-dom'
-import type { Task, TaskContent, TaskPatch } from '../types/task'
+import type { Task, TaskContent, TaskPatch, UpdateResult } from '../types/task'
 
 // 優先度ごとの表示名と色（試作版 style.css と同じ色）
 const priorityLabels: Record<Task['priority'], string> = {
@@ -28,9 +28,15 @@ type Props = {
   task: Task
   // 完了の列の番号。○ を押したタスクは、この列へ移る（列の一覧をまだ取れていないときは null）
   doneColumnId: number | null
-  onUpdate: (id: number, task: TaskContent) => Promise<boolean>
+  // 書き込み中（返事待ち）か。書き込み中は ○・✎・× を押せず、ドラッグでつかめず、少し薄く表示する（docs/同時編集の設計書.md の 6.1 節）
+  busy: boolean
+  // 編集の保存。version は、このカードが控えている版（✎ を開いたときの版。止められたあとは、いまの内容の版）
+  onUpdate: (id: number, task: TaskContent, version: number) => Promise<UpdateResult>
   onPatch: (id: number, patch: TaskPatch) => void
   onDelete: (id: number) => void
+  // 編集フォームを開いた・閉じたことを伝える（Board が、編集中のカードを開いたときの列・位置に留める）
+  onEditStart: (task: Task) => void
+  onEditEnd: () => void
 }
 
 // カードの下段（優先度と期限）。ふだんのカードと編集中のカードの両方で使う
@@ -57,25 +63,31 @@ export function TaskCardOverlay({ task }: { task: Task }) {
   )
 }
 
-function TaskCard({ task, doneColumnId, onUpdate, onPatch, onDelete }: Props) {
+function TaskCard({ task, doneColumnId, busy, onUpdate, onPatch, onDelete, onEditStart, onEditEnd }: Props) {
   // 編集中のカードを出す位置。null のあいだは編集していない
   // 編集中のカードに目が向くように、画面を暗くして、その上の同じ位置に編集用のカードを重ねる
   const [editPosition, setEditPosition] = useState<DOMRect | null>(null)
   const [text, setText] = useState(task.text)
   const [priority, setPriority] = useState<Task['priority']>(task.priority)
   const [dueDate, setDueDate] = useState(task.dueDate ?? '')
+  // 保存のときに送る版（✎ を開いたときの版の控え。docs/同時編集の設計書.md の 6.2 節）
+  // 開いたあとに、後ろのカードが新しい内容に入れ替わっても、利用者が見ていたのは開いたときの内容なので、その版で送る
+  // （新しい版で送ると、利用者が見ていない変更を、黙って上書きしてしまう）
+  const [baseVersion, setBaseVersion] = useState(task.version)
+  // 保存がほかの画面での変更で止められたときの「いまの内容」。null なら止められていない
+  const [conflict, setConflict] = useState<Task | null>(null)
   const cardRef = useRef<HTMLDivElement>(null)
   // 保存の送信中。state は表示用、ref は素早い 2 回目を防ぐ用（state は描き直しまで古いため）
   const [saving, setSaving] = useState(false)
   const savingRef = useRef(false)
 
-  // ドラッグ＆ドロップ：このカードを「つかめる」ようにする。編集中はつかめない（検索・絞り込み中はつかめる）
+  // ドラッグ＆ドロップ：このカードを「つかめる」ようにする。編集中・書き込み中はつかめない（検索・絞り込み中はつかめる）
   // setNodeRef：どの要素がカードかを dnd-kit に教える
   // attributes・listeners：マウスやキーボードでつかむための仕掛け。カードの要素に付ける
   // transform・transition：ドラッグ中にカードをどれだけ動かして見せるか
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: task.id,
-    disabled: editPosition !== null,
+    disabled: editPosition !== null || busy,
   })
 
   // 編集中だけ、スクロールと画面の大きさの変化を見張り、そのたびにカードの位置を測り直す
@@ -101,20 +113,78 @@ function TaskCard({ task, doneColumnId, onUpdate, onPatch, onDelete }: Props) {
     }
   }, [isEditing])
 
-  // ✎ を押したとき：欄に今のタスクの値を入れ、カードの位置を測ってから、編集を始める
+  // 編集中は、幕の後ろ（画面の本体 #root）を inert（押せない・フォーカスが入らない）にする
+  // 幕は見た目でクリックを止めるだけなので、Tab キーで後ろの ○・×・並び替えセレクトなどへ移って押せてしまう。
+  // そうすると、編集中のカードの書き込みと重なったり、開いたときの版がずれたりする（設計書 6.1 節）
+  // 編集画面は createPortal で body の直下に出しているので、#root の外にあり、inert にならない
+  useEffect(() => {
+    if (!isEditing) {
+      return
+    }
+    const root = document.getElementById('root')
+    if (root === null) {
+      return
+    }
+    root.inert = true
+    return () => {
+      root.inert = false
+    }
+  }, [isEditing])
+
+  // 編集が終わったとき（閉じた・カードの部品が消えた）に、Board に伝えて、カードを列・位置に留めるのをやめてもらう
+  // 部品が消えたとき（例：取り直しで列そのものがなくなった）にも伝わるように、後片付けで呼ぶ
+  // （閉じる関数の中だけで呼ぶと、部品が消えたときに伝わらず、カードがずっと古い位置に留められてしまう）
+  useEffect(() => {
+    if (!isEditing) {
+      return
+    }
+    return () => onEditEnd()
+  }, [isEditing, onEditEnd])
+
+  // ✎ を押したとき：欄に今のタスクの値を入れ、版を控え、カードの位置を測ってから、編集を始める
+  // カードの位置を測れないとき（部品がまだ画面にない）は、何もしない
+  // （位置がないと編集画面を出せないのに、Board にだけ「始めた」と伝えると、閉じたときの「終わった」が届かず、
+  //  カードが開いたときの列・位置に留められたままになるため）
   function startEditing() {
+    const rect = cardRef.current?.getBoundingClientRect()
+    if (!rect) {
+      return
+    }
     setText(task.text)
     setPriority(task.priority)
     setDueDate(task.dueDate ?? '')
-    setEditPosition(cardRef.current?.getBoundingClientRect() ?? null)
+    setBaseVersion(task.version)
+    setConflict(null)
+    setEditPosition(rect)
+    onEditStart(task)
+  }
+
+  // 編集を閉じる（保存できた・カードが消えていた・キャンセル）。止められたときの「いまの内容」も捨てる
+  // Board への「編集が終わった」の知らせは、上の後片付け（useEffect）が送る
+  function finishEditing() {
+    setEditPosition(null)
+    setConflict(null)
   }
 
   // 保存の送信中は閉じない（閉じたあとに失敗すると、入力が消えたように見えるため）
+  // Esc・幕のクリックで閉じたら、入力は捨てる（止められていたときも、利用者が閉じることを選んだため）
   function cancelEditing() {
     if (savingRef.current) {
       return
     }
-    setEditPosition(null)
+    finishEditing()
+  }
+
+  // 「いまの内容を入れる」：欄を、ほかの画面で変更された いまの内容 に入れ替え、赤い枠を消す（フォームは開いたまま）
+  // 版の控えは、止められたときに いまの内容 の版にしてあるので、このあと「保存」すれば、いまの内容に重ねて保存できる
+  function fillWithCurrent() {
+    if (conflict === null) {
+      return
+    }
+    setText(conflict.text)
+    setPriority(conflict.priority)
+    setDueDate(conflict.dueDate ?? '')
+    setConflict(null)
   }
 
   // × を押したとき：押し間違いで消えないよう、ブラウザの確認ダイアログを出す
@@ -136,22 +206,33 @@ function TaskCard({ task, doneColumnId, onUpdate, onPatch, onDelete }: Props) {
     const trimmed = text.trim()
 
     // 列（columnId）は送らない。サーバーは今の列のまま残す（TaskContent の説明を参照）
+    // 版は控えておいたもの。止められたあとの「この入力で上書き保存」は、いまの内容の版で送る
+    // （いまの内容を見たうえで、利用者が選んで上書きするため）
     savingRef.current = true
     setSaving(true)
-    let saved = false
+    let result: UpdateResult = { kind: 'failed' }
     try {
-      saved = await onUpdate(task.id, {
-        text: trimmed === '' ? task.text : trimmed,
-        priority,
-        dueDate: dueDate === '' ? null : dueDate,
-      })
+      result = await onUpdate(
+        task.id,
+        {
+          text: trimmed === '' ? task.text : trimmed,
+          priority,
+          dueDate: dueDate === '' ? null : dueDate,
+        },
+        baseVersion,
+      )
     } finally {
       savingRef.current = false
       setSaving(false)
     }
-    // 成功したときだけ編集を閉じる。失敗したときは入力をそのまま残す（直して、もう一度保存できるように）
-    if (saved) {
-      setEditPosition(null)
+    // 保存できた・カードが消えていた：編集を閉じる
+    // ほかの画面で変更されていた：入力はそのまま残し、いまの内容を見せる。次の保存は、いまの内容の版で送る
+    // そのほかの失敗：入力をそのまま残す（直して、もう一度保存できるように）
+    if (result.kind === 'ok' || result.kind === 'gone') {
+      finishEditing()
+    } else if (result.kind === 'conflict') {
+      setConflict(result.current)
+      setBaseVersion(result.current.version)
     }
   }
 
@@ -179,19 +260,25 @@ function TaskCard({ task, doneColumnId, onUpdate, onPatch, onDelete }: Props) {
         }}
         {...attributes}
         {...listeners}
+        aria-busy={busy}
         // ドラッグ中、元のカードは「着地点」として薄く表示する（マウスに付いてくるのは TaskCardOverlay）
-        className={`group rounded bg-white p-3 shadow-sm cursor-grab ${isDragging ? 'opacity-40' : ''}`}
+        // 書き込み中（返事待ち）は、少し薄く（不透明度 60%）して、送信中だと分かるようにする。つかめないので、矢印のカーソルにする
+        className={`group rounded bg-white p-3 shadow-sm ${busy ? 'cursor-default' : 'cursor-grab'} ${
+          isDragging ? 'opacity-40' : busy ? 'opacity-60' : ''
+        }`}
       >
         <div className="flex items-start gap-2">
           {/* ○：押すと完了の列へ移す。変えるのは列（columnId）だけなので PATCH を使う。完了の列のカードには出さない */}
+          {/* ○・✎・× は、書き込み中は押せない（disabled） */}
           {doneColumnId !== null && task.columnId !== doneColumnId && (
             <button
               type="button"
               onClick={() => onPatch(task.id, { columnId: doneColumnId })}
               onKeyDown={stopKeyFromReachingCard}
+              disabled={busy}
               aria-label="完了にする"
               title="完了にする"
-              className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-gray-400 text-[10px] leading-none text-transparent hover:border-[#61bd4f] hover:bg-[#61bd4f] hover:text-white"
+              className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-gray-400 text-[10px] leading-none text-transparent hover:border-[#61bd4f] hover:bg-[#61bd4f] hover:text-white disabled:cursor-not-allowed disabled:hover:border-gray-400 disabled:hover:bg-transparent disabled:hover:text-transparent"
             >
               ✓
             </button>
@@ -201,8 +288,9 @@ function TaskCard({ task, doneColumnId, onUpdate, onPatch, onDelete }: Props) {
             type="button"
             onClick={startEditing}
             onKeyDown={stopKeyFromReachingCard}
+            disabled={busy}
             aria-label="編集"
-            className="shrink-0 rounded px-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+            className="shrink-0 rounded px-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-gray-400"
           >
             ✎
           </button>
@@ -210,9 +298,10 @@ function TaskCard({ task, doneColumnId, onUpdate, onPatch, onDelete }: Props) {
             type="button"
             onClick={handleDeleteClick}
             onKeyDown={stopKeyFromReachingCard}
+            disabled={busy}
             aria-label="削除"
             title="削除"
-            className="shrink-0 rounded px-1 text-gray-400 hover:bg-gray-100 hover:text-[#eb5a46]"
+            className="shrink-0 rounded px-1 text-gray-400 hover:bg-gray-100 hover:text-[#eb5a46] disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-gray-400"
           >
             ×
           </button>
@@ -249,13 +338,37 @@ function TaskCard({ task, doneColumnId, onUpdate, onPatch, onDelete }: Props) {
                   />
                   <CardLabels priority={priority} dueDate={dueDate === '' ? null : dueDate} />
                 </div>
-                <button
-                  type="submit"
-                  disabled={saving}
-                  className="mt-2 rounded bg-[#0079bf] px-4 py-1.5 text-sm text-white hover:bg-[#026aa7] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-[#0079bf]"
-                >
-                  {saving ? '保存中…' : '保存'}
-                </button>
+                {/* ほかの画面で変更されていて、保存が止められたとき：赤い枠で知らせ、いまの内容を見せる（設計書 6.2 節） */}
+                {conflict && (
+                  <div role="alert" className="mt-2 rounded border-2 border-red-500 bg-red-50 p-2 text-xs text-red-800">
+                    <p>
+                      ほかの画面で、このカードが変更されていたため、保存しませんでした。いまの内容は下のとおりです。あなたの入力は、そのまま残しています。
+                    </p>
+                    <p className="mt-1 whitespace-pre-wrap">タスク名：{conflict.text}</p>
+                    <p>優先度：{priorityLabels[conflict.priority]}</p>
+                    <p>期限：{conflict.dueDate ?? 'なし'}</p>
+                  </div>
+                )}
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {/* 止められたあとは「この入力で上書き保存」（いまの内容を見たうえで、自分の入力で上書きする） */}
+                  <button
+                    type="submit"
+                    disabled={saving}
+                    className="rounded bg-[#0079bf] px-4 py-1.5 text-sm text-white hover:bg-[#026aa7] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-[#0079bf]"
+                  >
+                    {saving ? '保存中…' : conflict ? 'この入力で上書き保存' : '保存'}
+                  </button>
+                  {conflict && (
+                    <button
+                      type="button"
+                      onClick={fillWithCurrent}
+                      disabled={saving}
+                      className="rounded bg-white px-4 py-1.5 text-sm text-gray-800 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      いまの内容を入れる
+                    </button>
+                  )}
+                </div>
               </form>
 
               {/* 右：メニュー（優先度・期限）。ここで変えた値は、保存ボタンを押したときにまとめて送る */}

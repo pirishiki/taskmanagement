@@ -1,7 +1,7 @@
 import { useDroppable } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import type { BoardColumn } from '../types/column'
-import type { AddResult, NewTask, SortCriterion, Task, TaskContent, TaskPatch } from '../types/task'
+import type { AddResult, NewTask, SortCriterion, Task, TaskContent, TaskPatch, UpdateResult } from '../types/task'
 import AddTaskForm from './AddTaskForm'
 import TaskCard from './TaskCard'
 
@@ -21,15 +21,40 @@ type Props = {
   tasks: Task[]
   // 完了の列の番号（カードの ○ ボタンで使う）
   doneColumnId: number | null
+  // 書き込み中のタスクの番号（そのカードは操作できない）と、この列の削除の通信中か（列の × を押せない）
+  busyTaskIds: ReadonlySet<number>
+  deleting: boolean
   onAdd: (task: NewTask, idempotencyKey: string) => Promise<AddResult>
-  onUpdate: (id: number, task: TaskContent) => Promise<boolean>
+  onUpdate: (id: number, task: TaskContent, version: number) => Promise<UpdateResult>
   onPatch: (id: number, patch: TaskPatch) => void
   onDelete: (id: number) => void
   onSort: (columnId: number, criterion: SortCriterion) => void
   onDeleteColumn: (columnId: number) => void
+  // カードの編集フォームを開いた・閉じたことを Board に伝える（編集中のカードを、その列・位置に留めるため）
+  onEditStart: (task: Task) => void
+  onEditEnd: () => void
 }
 
-function Column({ column, tasks, doneColumnId, onAdd, onUpdate, onPatch, onDelete, onSort, onDeleteColumn }: Props) {
+function Column({
+  column,
+  tasks,
+  doneColumnId,
+  busyTaskIds,
+  deleting,
+  onAdd,
+  onUpdate,
+  onPatch,
+  onDelete,
+  onSort,
+  onDeleteColumn,
+  onEditStart,
+  onEditEnd,
+}: Props) {
+  // 列の中に書き込み中のカードが 1 枚でもあれば、並び替えセレクトを押せなくする（docs/同時編集の設計書.md の 6.1 節）
+  // 並べ替えは、その列の見えているカード全部の版を送るので、書き込み中のカードの古い版で送ると、まちがって止まるため
+  // （自動並び替えの通信中も、送ったカードが全部書き込み中になるので、押せない）
+  const sortDisabled = tasks.some((task) => busyTaskIds.has(task.id))
+
   // 列の × を押したとき：押し間違いで消えないよう、ブラウザの確認ダイアログを出す（カードの × と同じ）
   // タスクが入っている列は、サーバーが断る（409）。理由は App が画面の上に出す
   // （検索・絞り込み中は見えていないタスクもあるので、画面のカードの枚数では決めず、サーバーに確かめてもらう）
@@ -61,7 +86,9 @@ function Column({ column, tasks, doneColumnId, onAdd, onUpdate, onPatch, onDelet
               onSort(column.id, selected.value)
             }
           }}
-          className="rounded bg-white px-1 py-0.5 text-xs text-gray-600"
+          disabled={sortDisabled}
+          title={sortDisabled ? '保存中のカードがあります。終わると選べます' : undefined}
+          className="rounded bg-white px-1 py-0.5 text-xs text-gray-600 disabled:cursor-not-allowed disabled:opacity-60"
         >
           <option value="" disabled>
             並び替え
@@ -77,12 +104,14 @@ function Column({ column, tasks, doneColumnId, onAdd, onUpdate, onPatch, onDelet
         {/* カードの ✎・× はいつも出すが、列の削除はめったに使わず、見出しをすっきりさせたいため（要件定義書 6.2） */}
         {/* opacity（透明度）で隠すので、ボタンの場所は空いたまま。見せたり隠したりしても見出しの並びがずれない */}
         {!column.fixed && (
+          // 削除の通信中は押せない（2 回目を送らないことを、見た目でも分かるようにする。設計書 6.1 節）
           <button
             type="button"
             onClick={handleDeleteClick}
+            disabled={deleting}
             aria-label={`列「${column.name}」を削除`}
-            title="列を削除"
-            className="shrink-0 rounded px-1 text-gray-400 opacity-0 group-focus-within/column:opacity-100 group-hover/column:opacity-100 hover:bg-gray-300/60 hover:text-[#eb5a46] focus-visible:opacity-100"
+            title={deleting ? '削除中…' : '列を削除'}
+            className="shrink-0 rounded px-1 text-gray-400 opacity-0 group-focus-within/column:opacity-100 group-hover/column:opacity-100 hover:bg-gray-300/60 hover:text-[#eb5a46] focus-visible:opacity-100 disabled:cursor-not-allowed disabled:text-gray-300 disabled:hover:bg-transparent disabled:hover:text-gray-300"
           >
             ×
           </button>
@@ -97,9 +126,12 @@ function Column({ column, tasks, doneColumnId, onAdd, onUpdate, onPatch, onDelet
               key={task.id}
               task={task}
               doneColumnId={doneColumnId}
+              busy={busyTaskIds.has(task.id)}
               onUpdate={onUpdate}
               onPatch={onPatch}
               onDelete={onDelete}
+              onEditStart={onEditStart}
+              onEditEnd={onEditEnd}
             />
           ))}
         </div>
