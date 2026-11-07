@@ -87,6 +87,9 @@ function App() {
   const [error, setError] = useState<string | null>(null)
   // 最後に検索したときの条件（キーワード・優先度・期限）
   const [filters, setFilters] = useState<TaskFilters>(noFilters)
+  // 最新の検索の条件。通信が終わったあとの取り直しは、押した時点の古い条件（クロージャ）ではなく、これを使う
+  // （import や並び替えの通信中に検索されても、検索欄の新しい条件で取り直すため）
+  const filtersRef = useRef<TaskFilters>(noFilters)
   // 条件が1つでも選ばれていれば、一部のタスクだけを表示している（検索・絞り込み中）
   const isFiltering = filters.keyword !== '' || filters.priorities.length > 0 || filters.due !== ''
 
@@ -139,6 +142,7 @@ function App() {
     setError(null)
     setLoading(true)
     setFilters(nextFilters)
+    filtersRef.current = nextFilters
     loadTasks(nextFilters)
   }
 
@@ -264,7 +268,7 @@ function App() {
       })
       .catch((error) => {
         setError(errorMessage(error, '並び替えを保存'))
-        loadTasks(filters)
+        loadTasks(filtersRef.current)
       })
   }
 
@@ -299,7 +303,7 @@ function App() {
       .then(() => setError(null))
       .catch((error) => {
         setError(errorMessage(error, '並び替えを保存'))
-        loadTasks(filters)
+        loadTasks(filtersRef.current)
       })
   }
 
@@ -358,7 +362,7 @@ function App() {
         setError(null)
         // 列とタスクの取り直しが終わるまで待つ（ボタンが先に戻ると、古い列へ追加して 400 になるため）
         // 取り直しの失敗は、loadColumns・loadTasks がそれぞれ画面に出す
-        await Promise.all([loadColumns(), loadTasks(filters)])
+        await Promise.all([loadColumns(), loadTasks(filtersRef.current)])
       })
       .catch((error) => {
         setError(errorMessage(error, 'ファイルを読み込み'))

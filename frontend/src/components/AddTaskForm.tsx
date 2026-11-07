@@ -22,7 +22,7 @@ function AddTaskForm({ onAdd }: Props) {
   const [priority, setPriority] = useState<Task['priority']>('medium')
   const [dueDate, setDueDate] = useState('')
   // 番号札と送信中の管理（送信中は 2 回目の送信を無視する）
-  const { sending, submit, submitError } =useIdempotentSubmit(onAdd)
+  const { sending, submit, submitError, clearError } = useIdempotentSubmit(onAdd)
 
   // 欄を最初の状態に戻す
   function resetFields() {
@@ -38,6 +38,7 @@ function AddTaskForm({ onAdd }: Props) {
       return
     }
     resetFields()
+    clearError()
     setOpen(false)
   }
 
@@ -71,7 +72,10 @@ function AddTaskForm({ onAdd }: Props) {
     return (
       <button
         type="button"
-        onClick={() => setOpen(true)}
+        onClick={() => {
+          clearError()
+          setOpen(true)
+        }}
         className="mt-2 w-full rounded px-2 py-1.5 text-left text-sm text-gray-600 hover:bg-gray-300/60 hover:text-gray-800"
       >
         ＋ カードを追加
@@ -84,7 +88,10 @@ function AddTaskForm({ onAdd }: Props) {
       <input
         type="text"
         value={text}
-        onChange={(event) => setText(event.target.value)}
+        onChange={(event) => {
+          clearError()
+          setText(event.target.value)
+        }}
         onKeyDown={handleKeyDown}
         autoFocus
         // 送信中は書き換えられない（disabled にすると入力欄からフォーカスが外れるので readOnly）
@@ -102,6 +109,7 @@ function AddTaskForm({ onAdd }: Props) {
             // 選ばれた値を選択肢の一覧から探す。見つかれば、その値は必ず 'high' | 'medium' | 'low' のどれか
             const selected = priorityOptions.find((option) => option.value === event.target.value)
             if (selected) {
+              clearError()
               setPriority(selected.value)
             }
           }}
@@ -117,7 +125,10 @@ function AddTaskForm({ onAdd }: Props) {
           type="date"
           value={dueDate}
           disabled={sending}
-          onChange={(event) => setDueDate(event.target.value)}
+          onChange={(event) => {
+            clearError()
+            setDueDate(event.target.value)
+          }}
           className="min-w-0 flex-1 rounded border border-gray-300 bg-white px-2 py-1 text-sm"
         />
       </div>

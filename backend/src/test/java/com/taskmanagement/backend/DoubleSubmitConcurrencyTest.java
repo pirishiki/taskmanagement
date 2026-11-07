@@ -19,7 +19,12 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.assertj.MockMvcTester;
 import org.springframework.test.web.servlet.assertj.MvcTestResult;
 
+import javax.sql.DataSource;
 import java.nio.charset.StandardCharsets;
+import java.sql.Connection;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -58,6 +63,9 @@ class DoubleSubmitConcurrencyTest {
     // すき間が広くなる（1 つの状態を最後まで読む作りでないと、混ざったファイルが出やすくなる）
     private static final int EXTRA_COLUMNS = 20;
 
+    // 分離レベルが残っていないかを確かめるために、接続プールから同時に借りる接続の数
+    private static final int BORROWED_CONNECTIONS = 5;
+
     @Autowired
     private MockMvcTester mvc;
 
@@ -69,6 +77,9 @@ class DoubleSubmitConcurrencyTest {
 
     @Autowired
     private JdbcTemplate jdbc;
+
+    @Autowired
+    private DataSource dataSource;
 
     private Long todo;
 
@@ -515,7 +526,7 @@ class DoubleSubmitConcurrencyTest {
 
     @Test
     @DisplayName("DS-35 書き出しと import を同時に送ると、書き出したファイルは import の前か後の、どちらかの状態と完全に一致する")
-    void ds35ExportDuringImportIsOneConsistentState() {
+    void ds35ExportDuringImportIsOneConsistentState() throws SQLException {
         for (int round = 0; round < ROUNDS * 4; round++) {
             // 準備：前の状態（P か Q）を読み込んでおく。毎ラウンド、入れ替える（前と後が必ずちがう中身になる）
             String before = round % 2 == 0 ? "P" : "Q";
@@ -529,9 +540,13 @@ class DoubleSubmitConcurrencyTest {
             Queue<MvcTestResult> exports = new ConcurrentLinkedQueue<>();
             List<Supplier<MvcTestResult>> calls = new ArrayList<>();
             calls.add(() -> {
-                MvcTestResult imported = importFile(wideImportJson(after));
-                importDone.set(true);
-                return imported;
+                // import が例外を投げても、書き出しのスレッドが回り続けないように、finally で必ず終わりの印を付ける
+                // 例外はそのまま投げ直される（握りつぶさない）ので、テストは失敗になる
+                try {
+                    return importFile(wideImportJson(after));
+                } finally {
+                    importDone.set(true);
+                }
             });
             for (int i = 1; i < THREADS; i++) {
                 calls.add(() -> {
@@ -555,6 +570,31 @@ class DoubleSubmitConcurrencyTest {
                 assertThat(statusOf(export)).isEqualTo(200);
                 assertThat(exportedBoard(export)).isIn(expectedBoard(before), expectedBoard(after));
             }
+        }
+
+        // 書き出しの分離レベル（REPEATABLE_READ）は、そのトランザクションの中だけ。接続プールに返った接続には残らない
+        assertBorrowedConnectionsAreReadCommitted(BORROWED_CONNECTIONS);
+    }
+
+    // 1 本借りて確かめ、その接続を開いたまま次を借りる（返す前に次を借りるので、同じ接続が二度来ない）
+    // WriteLockTimeoutTest の assertBorrowedLockTimeouts と同じ形。try-with-resources で、確かめ終わった接続は必ずプールへ返す
+    private void assertBorrowedConnectionsAreReadCommitted(int remaining) throws SQLException {
+        if (remaining == 0) {
+            return;
+        }
+        try (Connection connection = dataSource.getConnection();
+                Statement statement = connection.createStatement()) {
+            // いまの設定と、新しいトランザクションの既定の、両方が read committed のまま
+            for (String setting : List.of("transaction_isolation", "default_transaction_isolation")) {
+                try (ResultSet result = statement.executeQuery("SHOW " + setting)) {
+                    String isolation = null;
+                    if (result.next()) {
+                        isolation = result.getString(1);
+                    }
+                    assertThat(isolation).as(setting).isEqualTo("read committed");
+                }
+            }
+            assertBorrowedConnectionsAreReadCommitted(remaining - 1);
         }
     }
 }

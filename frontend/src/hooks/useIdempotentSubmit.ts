@@ -7,6 +7,7 @@ import { createUuid } from '../utils/uuid'
 // ・成功したら、次の追加用に新しい札にする
 // ・送信中は sending が true。2 回目の送信（ボタン・Enter）は無視する
 // ・札が作れない、送る処理が例外を投げた、というときは、submitError に理由を入れる（フォームが赤く出す。押しても何も起きない、にしない）
+//   submitError は clearError で消す（入力が変わったとき、フォームを閉じる・開くとき）
 // send：実際に送る関数。結果（AddResult）を返す
 export function useIdempotentSubmit<T>(send: (value: T, idempotencyKey: string) => Promise<AddResult>) {
   const [sending, setSending] = useState(false)
@@ -15,6 +16,10 @@ export function useIdempotentSubmit<T>(send: (value: T, idempotencyKey: string) 
   const keyRef = useRef<{ key: string; signature: string } | null>(null)
   // state は描き直しまで古いままなので、2 回続けて素早く呼ばれても防げるように、ref でも送信中を覚える
   const sendingRef = useRef(false)
+
+  function clearError() {
+    setSubmitError(null)
+  }
 
   // value を送る。signature は、value の内容を表す文字列（同じ内容なら同じ文字列）
   // 送信中で無視したときは null、そうでなければ送った結果を返す（例外は投げない）
@@ -26,26 +31,33 @@ export function useIdempotentSubmit<T>(send: (value: T, idempotencyKey: string) 
     setSending(true)
     setSubmitError(null)
     try {
-      // 札がない、または内容が前に送ったものとちがうときは、新しい札にする
+      // 札がない、または内容が前に送ったものとちがうときは、新しい札にする（札の生成の失敗だけ、専用のメッセージにする）
       if (keyRef.current === null || keyRef.current.signature !== signature) {
-        keyRef.current = { key: createUuid(), signature }
+        try {
+          keyRef.current = { key: createUuid(), signature }
+        } catch {
+          keyRef.current = null
+          setSubmitError('番号札を作れませんでした。ブラウザを開き直してから、もう一度お試しください。')
+          return 'failed'
+        }
       }
-      const result = await send(value, keyRef.current.key)
-      // 成功した（次の追加は別のもの）か、同じ札では必ず失敗する場合は、札を捨てる
-      if (result !== 'failed') {
-        keyRef.current = null
+      try {
+        const result = await send(value, keyRef.current.key)
+        // 成功した（次の追加は別のもの）か、同じ札では必ず失敗する場合は、札を捨てる
+        if (result !== 'failed') {
+          keyRef.current = null
+        }
+        return result
+      } catch {
+        // 送る処理が想定外の例外を投げた。入力は残す。送れたかどうか分からないので、札は残して同じ札で送り直せるようにする
+        setSubmitError('追加できませんでした。もう一度お試しください。')
+        return 'failed'
       }
-      return result
-    } catch {
-      // 札が作れなかった、または送る処理が想定外の例外を投げた。入力は残したまま、理由を出す
-      keyRef.current = null
-      setSubmitError('番号札を作れませんでした。ブラウザを開き直してから、もう一度お試しください。')
-      return 'failed'
     } finally {
       sendingRef.current = false
       setSending(false)
     }
   }
 
-  return { sending, submit, submitError }
+  return { sending, submit, submitError, clearError }
 }

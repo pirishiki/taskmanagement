@@ -12,7 +12,7 @@ function AddColumnForm({ onAdd }: Props) {
   const [open, setOpen] = useState(false)
   const [name, setName] = useState('')
   // 番号札と送信中の管理（送信中は 2 回目の送信を無視する）
-  const { sending, submit, submitError } =useIdempotentSubmit(onAdd)
+  const { sending, submit, submitError, clearError } = useIdempotentSubmit(onAdd)
 
   // ✕ ボタン、または Esc キーでフォームを閉じる（入力途中の内容は捨てる）
   // 送信中は閉じない（閉じたあとに失敗すると、捨てたはずの入力が戻ってしまうため）
@@ -21,6 +21,7 @@ function AddColumnForm({ onAdd }: Props) {
       return
     }
     setName('')
+    clearError()
     setOpen(false)
   }
 
@@ -53,7 +54,10 @@ function AddColumnForm({ onAdd }: Props) {
     return (
       <button
         type="button"
-        onClick={() => setOpen(true)}
+        onClick={() => {
+          clearError()
+          setOpen(true)
+        }}
         className="w-72 shrink-0 rounded-md bg-white/50 px-3 py-2.5 text-left text-sm text-gray-700 hover:bg-white/80"
       >
         ＋ 列を追加
@@ -66,7 +70,10 @@ function AddColumnForm({ onAdd }: Props) {
       <input
         type="text"
         value={name}
-        onChange={(event) => setName(event.target.value)}
+        onChange={(event) => {
+          clearError()
+          setName(event.target.value)
+        }}
         onKeyDown={handleKeyDown}
         autoFocus
         // 送信中は書き換えられない（disabled にすると入力欄からフォーカスが外れるので readOnly）
